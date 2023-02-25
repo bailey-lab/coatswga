@@ -1,7 +1,7 @@
 {
-    "data_dir": "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/data/",
-    "min_primer_length": 10,
-    "max_primer_length": 24,
+    "data_dir": "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/data",
+    "min_primer_length": 5,
+    "max_primer_length": 5,
     "min_fg_freq": 1e-05,
     "max_bg_freq": 5e-06,
     "min_tm": 15,
@@ -12,23 +12,23 @@
     "max_dimer_bp": 3,
     "max_self_dimer_bp": 4,
     "target_coverage": 0.95,
-    "fragment_length": 8000,
+    "fragment_length": 50,
     "fg_genomes": [
-        "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/malaria_genome.fna"
+        "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/fg_test.fna"
     ],
     "bg_genomes": [
-        "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/human_genome.fna"
+        "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/bg_test.fna"
     ],
     "fg_prefixes": [
-        "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/kmers/malaria"
+        "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/data/fg"
     ],
     "bg_prefixes": [
-        "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/kmers/human"
+        "/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/data/bg"
     ],
     "fg_seq_lengths": [
-        23333868
+        1520
     ],
     "bg_seq_lengths": [
-        3298507598
+        10880
     ]
 }

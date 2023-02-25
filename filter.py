@@ -33,15 +33,15 @@ def filter_primers_into_dict(data, fg_total_length, bg_total_length):
 def calc_gini(data, primer_dict):
     print("Calculating Gini indices...")
     tasks = []
-    # dicts = []
+    dicts = []
     for i, fg_prefix in enumerate(data['fg_prefixes']):
         for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
             primers_per_k = {primer: [[]] for primer in primer_dict if len(primer) == k}
-            # dicts.append(get_positions((primers_per_k, k, data, fg_prefix, data['fg_genomes'][i], data['fg_seq_lengths'][i])))
+            dicts.append(get_positions((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i])))
             tasks.append((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i]))
-    pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
-    return pool.map(get_positions, tasks)
-    # return dicts
+    # pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+    # return pool.map(get_positions, tasks)
+    return dicts
 
 
 def get_positions(task):
@@ -116,21 +116,21 @@ def make_df(primers_with_ginis:list, primer_dict:dict, data):
     sorted_df = df.sort_values(by=["ratio"])
     return sorted_df, primers_with_positions
 
-def make_h5(primers_with_positions:dict, data):
-    for fg_prefix in data['fg_prefixes']:
-        for primers_per_k in primers_with_positions:
-            if primers_per_k == {}:
-                continue
-            k = len(list(primers_per_k.keys())[0])
-            file = h5py.File(fg_prefix + '_' + str(k) + 'mer_positions.h5', 'a')
-            for primer in primers_per_k:
-                positions = primers_per_k[primer][0]
-                if primer not in file:
-                    file.create_dataset(primer, data=positions)
-                else:
-                    del file[primer]
-                    file.create_dataset(primer, data=positions)
-            file.close()
+# def make_h5(primers_with_positions:dict, data):
+#     for fg_prefix in data['fg_prefixes']:
+#         for primers_per_k in primers_with_positions:
+#             if primers_per_k == {}:
+#                 continue
+#             k = len(list(primers_per_k.keys())[0])
+#             file = h5py.File(fg_prefix + '_' + str(k) + 'mer_positions.h5', 'a')
+#             for primer in primers_per_k:
+#                 positions = primers_per_k[primer][0]
+#                 if primer not in file:
+#                     file.create_dataset(primer, data=positions)
+#                 else:
+#                     del file[primer]
+#                     file.create_dataset(primer, data=positions)
+#             file.close()
 
 def main(data):
     fg_total_length = sum(data['fg_seq_lengths'])
@@ -144,12 +144,14 @@ def main(data):
 
 if __name__ == "__main__":
     in_json = sys.argv[1]
-    # in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/new_src/test_params.json'
+    # in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/new_src/my_params.json'
     with open(in_json, 'r') as f:
         data = json.load(f)
     df, primers_with_positions = main(data)
-    with open(data['data_dir'] + "primers_df.csv", 'w+') as f:
+    # put in if statement to deal with different data_dir formats
+    with open(data['data_dir'] + "/primers_df.csv", 'w+') as f:
         df.to_csv(data['data_dir'] + "primers_df.csv")
-    with open(data['data_dir'] + "primers_with_ginis.csv") as f:
+    with open(data['data_dir'] + "/primers_with_ginis.csv", 'w+') as f:
         for primer in primers_with_positions:
-            f.write(str(primer), str(primers_with_positions[primer]))
+            to_write = str(primer) + ":" + str(primers_with_positions[primer]) + "\n"
+            f.write(to_write)
