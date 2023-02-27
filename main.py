@@ -7,21 +7,25 @@ import sys
 import json
 
 def main():
-    in_json = sys.argv[2]
-    step = sys.argv[1]
-
-    # step = "sets"
-    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/new_src/my_params.json'
-
-    with open(in_json, 'r') as f:
-        data = json.load(f)
-    if step == "find":
-        find.main(data)
-    elif step == "sets":
-        df, primers_with_positions = filter.main(data)
-        sets.main(df, primers_with_positions, data)
+    if len(sys.argv) != 3:
+        print('Usage: python3 main.py <STEP: find|sets> [PARAMS FILEPATH]')
+        quit()
     else:
-        print("Invalid step. Input is 'find' or 'sets'.")
+        in_json = sys.argv[2]
+        step = sys.argv[1]
+
+        # step = "sets"
+        # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/new_src/my_params.json'
+
+        with open(in_json, 'r') as f:
+            data = json.load(f)
+        if step == "find":
+            find.main(data)
+        elif step == "sets":
+            df, primers_with_positions = filter.main(data)
+            sets.main(df, primers_with_positions, data)
+        else:
+            print("Invalid step. Input is 'find' or 'sets'.")
 
 if __name__ == "__main__":
     main()

@@ -4,9 +4,11 @@ import json
 
 def run_jellyfish(data, genome_fname=None, output_prefix=None, min=6, max=12):
     """
-    Runs jellyfish program using the output_prefix and transfroms the kmer count information txt files. Count k-mers from 6 to 12.
+    Runs jellyfish program using the output_prefix and transfroms the kmer count information to txt files. Count k-mers within range 
+    found in the JSON file.
 
     Args:
+        data: A JSON object containing hyperparameters
         genome_fname: The fasta file used to count kmers.
         output_prefix: The output path prefix for the output files. Resulting output files will be suffixed by _kmer_all.txt for k from 6 to 12 inclusive.
     """
@@ -19,7 +21,7 @@ def run_jellyfish(data, genome_fname=None, output_prefix=None, min=6, max=12):
 
 def step1(data, fg_prefixes, fg_genomes, bg_prefixes, bg_genomes, min, max):
     """
-    Creates files of all k-mers of specified lengths which is located in the path specificed by --kmer_fore
+    Creates files of all k-mers of specified lengths which is located in the path specificed in the JSON file
     """
     for prefix in fg_prefixes:
         if not os.path.exists(os.path.dirname(prefix)):
