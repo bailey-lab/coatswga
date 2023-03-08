@@ -1,7 +1,7 @@
 **/__pycache__/*
-my_params.py
+my_params.json
 bg_positions.py
-new_params.py
+new_params.json
 step2.py
-seekdeep_params.py
-test_params.py
+seekdeep_params.json
+test_params.json
