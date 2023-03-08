@@ -8,7 +8,7 @@ import json
 
 def main():
     if len(sys.argv) != 3:
-        print('Usage: python3 main.py <STEP: find|sets> [PARAMS FILEPATH]')
+        print('Usage: python3 main.py <STEP: find|sets|all> [PARAMS FILEPATH]')
         quit()
     else:
         in_json = sys.argv[2]
@@ -24,8 +24,12 @@ def main():
         elif step == "sets":
             df, primers_with_positions = filter.main(data)
             sets.main(df, primers_with_positions, data)
+        elif step == "all":
+            find.main(data)
+            df, primers_with_positions = filter.main(data)
+            sets.main(df, primers_with_positions, data)
         else:
-            print("Invalid step. Input is 'find' or 'sets'.")
+            print("Invalid step. Input is 'find', 'sets', or 'all'.")
 
 if __name__ == "__main__":
     main()
