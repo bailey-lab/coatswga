@@ -7,110 +7,6 @@ import pandas as pd
 import os
 import subprocess
 
-def filter_primers_into_dict(data, fg_total_length, bg_total_length):
-    '''
-    Iterates through each possible kmer in the foreground genome. Filters by melting temperature, foreground count, and background
-    count. Filters can all be customized in the JSON file.
-
-    Args:
-        data: A JSON object containing hyperparameters
-        fg_total_length: total length of the foreground genomes found in the JSON file
-        bg_total_length: total length of the background genomes found in the JSON file
-
-    Returns:
-        primer_dict: dictionary mapping the primers that pass the filters to a list containing amount of foreground and background hits
-    '''
-    primer_dict = {}
-    print("Filtering primers...")
-    for prefix in data["fg_prefixes"]:
-        for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
-            with open(prefix+'_'+str(k)+'mer_all.txt', 'r') as f_in:
-                for line in f_in:
-                    tupled = line.strip().split(" ")
-                    kmer = tupled[0]
-                    fg_count = tupled[1]
-                    fg_freq = int(fg_count)/fg_total_length
-                    if fg_freq > data["min_fg_freq"]:
-                        tm = melting.temp(kmer)
-                        if tm < data['max_tm'] and tm > data['min_tm']:
-                            bg_count = 0
-                            for bg_prefix in data['bg_prefixes']:
-                                count_tuple = subprocess.check_output(['jellyfish', 'query', bg_prefix+'_'+str(k)+'mer_all.jf', kmer]).decode().strip().split(' ')
-                                bg_count += int(count_tuple[1])
-                            if bg_count/bg_total_length < data["max_bg_freq"]:
-                                primer_dict[kmer] = [fg_count, bg_count]
-    return primer_dict
-
-def calc_gini(data, primer_dict):
-    '''
-    Uses helper methods and multithreading to find the positions and Gini indices of each primer
-
-    Args:
-        data: A JSON object containing hyperparameters
-        primer_dict: Dictionary mapping primers to the amount of their foreground and background hits
-
-    Returns:
-        pool.map(get_positions, tasks): A list of dictionaries mapping each primer to its positions in the foreground genome and its 
-            gini index.
-    '''
-    print("Calculating Gini indices...")
-    tasks = []
-    # dicts = []
-    for i, fg_prefix in enumerate(data['fg_prefixes']):
-        for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
-            primers_per_k = {primer: [[]] for primer in primer_dict if len(primer) == k}
-            # dicts.append(get_positions((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i])))
-            tasks.append((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i]))
-    pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
-    return pool.map(get_positions, tasks)
-    # return dicts
-
-
-def get_positions(task):
-    '''
-    Reads through the foreground genome and records the indices at which each primer in the dictionary occurs
-
-    Args:
-        task:
-            primer_dict: dictionary mapping primers of a certain length k to empty lists to be filled with positions
-            k: length of the primers in priemr_dict
-            fg_genome: file path of the genome to read
-            seq_length: length of the sequence in fg_genome
-
-    Returns:
-        get_gap_lengths(primer_dict, seq_length): dictionary mapping primers to their position indices and Gini index
-    '''
-    primer_dict, k, fg_genome, seq_length = task
-    with open(fg_genome, 'r') as f:
-        index = 0
-        prev = ''
-        for line in f:
-            if line[0] == ">":
-                prev = ''
-                continue
-            stripped = line.strip()
-            combined = ''.join([prev[len(prev)-k+1:], stripped]).upper()
-            for i in range(len(combined)-k+1):
-                if combined[i:k+i] in primer_dict:
-                    primer_dict[combined[i:k+i]][0].append(index)
-                index += 1
-            prev = stripped
-    return get_gap_lengths(primer_dict, seq_length)
-
-def get_gap_lengths(primer_dict, seq_length):
-    '''
-    Helper method to find differences in positions so that the Gini index can be calculated
-    '''
-    for primer in primer_dict:
-        if type(primer_dict[primer][0]) != list or primer_dict[primer] == []:
-            continue
-        positions = primer_dict[primer][0]
-        differences = [a_i - b_i for a_i, b_i in zip(positions[1:], positions[:-1])]
-        differences.append(seq_length-positions[-1])
-        differences.append(positions[0])
-        primer_dict[primer].append(gini_exact(differences))
-    return primer_dict
-
 def gini_exact(array):
     """
     Calculates the Gini coefficient of a numpy array. Based on bottom equation from
@@ -140,6 +36,122 @@ def gini_exact(array):
     # Gini coefficient:
     return ((np.sum((2 * index - n - 1) * array)) / (n * np.sum(array)))
 
+def filter_primers_into_dict(data, fg_total_length, bg_total_length):
+    '''
+    Iterates through each possible kmer in the foreground genome. Filters by melting temperature, foreground count, and background
+    count. Filters can all be customized in the JSON file.
+
+    Args:
+        data: A JSON object containing hyperparameters
+        fg_total_length: total length of the foreground genomes found in the JSON file
+        bg_total_length: total length of the background genomes found in the JSON file
+
+    Returns:
+        primer_dict: dictionary mapping the primers that pass the filters to a list containing amount of foreground and background hits
+    '''
+    primer_dict = {}
+    print("Filtering primers...")
+    # for each prefix, iterate through each kmer length to search in the jellyfish files
+    for prefix in data["fg_prefixes"]:
+        for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
+            with open(prefix+'_'+str(k)+'mer_all.txt', 'r') as f_in:
+                for line in f_in:
+                    # jellyfish dump outputs in the format "[kmer] [count]" so split on space to separate
+                    tupled = line.strip().split(" ")
+                    # isolate kmer
+                    kmer = tupled[0]
+                    # isolate count
+                    fg_count = int(tupled[1])
+                    # calculate foreground frequency
+                    fg_freq = fg_count/fg_total_length
+                    # check fg_freq is above threshold
+                    if fg_freq > data["min_fg_freq"]:
+                        # calculate melting temp of the kmer
+                        tm = melting.temp(kmer)
+                        # check melting temp is within range
+                        if tm < data['max_tm'] and tm > data['min_tm']:
+                            bg_count = 0
+                            # iterate through each background genome given, querying the jellyfish files for counts and summing them
+                            for bg_prefix in data['bg_prefixes']:
+                                count_tuple = subprocess.check_output(['jellyfish', 'query', bg_prefix+'_'+str(k)+'mer_all.jf', kmer]).decode().strip().split(' ')
+                                bg_count += int(count_tuple[1])
+                            # final check if background frequency is below threshold, if yes then add to the primer dict
+                            if bg_count/bg_total_length < data["max_bg_freq"]:
+                                primer_dict[kmer] = [fg_count, bg_count]
+    return primer_dict
+
+def make_tasks(data, primer_dict):
+    '''
+    Initalizes the tasks array so the filter process can be multithreaded
+
+    Args:
+        data: A JSON object containing hyperparameters
+        primer_dict: Dictionary mapping primers to the amount of their foreground and background hits
+
+    Returns:
+        tasks: an array of immutables of primers of each length in the range, genome paths, and sequence lengths for each
+            foreground genome.
+    '''
+    print("Calculating Gini indices...")
+    tasks = []
+    # dicts = []
+    for i, fg_genome in enumerate(data['fg_genomes']):
+        for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
+            primers_per_k = {primer: [[]] for primer in primer_dict if len(primer) == k}
+            # dicts.append(get_positions((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i])))
+            tasks.append((primers_per_k, k, fg_genome, data['fg_seq_lengths'][i]))
+    return tasks
+
+def get_positions(task):
+    '''
+    Reads through the foreground genome and records the indices at which each primer in the dictionary occurs then finds the lengths
+    of the gaps in between the positions so the Gini index can be calculated.
+
+    Args:
+        task:
+            primer_dict: dictionary mapping primers of a certain length k to empty lists to be filled with positions
+            k: length of the primers in priemr_dict
+            fg_genome: file path of the genome to read
+            seq_length: length of the sequence in fg_genome
+
+    Returns:
+        get_gap_lengths(primer_dict, seq_length): dictionary mapping primers to their position indices and Gini index
+    '''
+    # breaks up the task
+    primer_dict, k, fg_genome, seq_length = task
+
+    # opens the passed genome file to read
+    with open(fg_genome, 'r') as f:
+        index = 0
+        prev = ''
+        # iterates through each line in the file, concatenating the line before with the current line while removing any whitespace
+        # so that kmers that cross lines can be counted. Searches the combined lines base by base checking if the substrings are in
+        # the dictionary of possible primers, records any positions found.
+        for line in f:
+            # if line is gene header, skip
+            if line[0] == ">":
+                prev = ''
+                continue
+            # combines stripped lines
+            stripped = line.strip()
+            combined = ''.join([prev[len(prev)-k+1:], stripped]).upper()
+            # iterates through each base checking for primers
+            for i in range(len(combined)-k+1):
+                if combined[i:k+i] in primer_dict:
+                    primer_dict[combined[i:k+i]][0].append(index)
+                index += 1
+            prev = stripped
+    # for each primer in the dictionary, calculates the gap lengths in between index positions
+    for primer in primer_dict:
+        if type(primer_dict[primer][0]) != list or primer_dict[primer] == []:
+            continue
+        positions = primer_dict[primer][0]
+        differences = [a_i - b_i for a_i, b_i in zip(positions[1:], positions[:-1])]
+        differences.append(seq_length-positions[-1])
+        differences.append(positions[0])
+        primer_dict[primer].append(gini_exact(differences))
+    return primer_dict
+
 def make_df(primers_with_ginis:list, primer_dict:dict, data):
     '''
     Takes in the haphazard dictionaries containing the primers of different lengths and combines them into a pandas DataFrame and a 
@@ -160,9 +172,9 @@ def make_df(primers_with_ginis:list, primer_dict:dict, data):
     primers_with_positions = {}
     for diction in primers_with_ginis:
         for primer in diction:
-            if diction[primer][1] < data["max_gini"]:
-                primers_as_list.append([primer, int(primer_dict[primer][0]), int(primer_dict[primer][1]), diction[primer][1]])
-                primers_with_positions[primer] = diction[primer][0]
+            # if diction[primer][1] < data["max_gini"]:
+            primers_as_list.append([primer, int(primer_dict[primer][0]), int(primer_dict[primer][1]), diction[primer][1]])
+            primers_with_positions[primer] = diction[primer][0]
     df = pd.DataFrame(primers_as_list, columns=['primer', 'fg_count', 'bg_count', 'gini'])
     # df['gini_bool'] = df.apply(lambda x: x['gini'] is not None and x['gini'] < data['max_gini'], axis=1)
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
@@ -174,7 +186,9 @@ def main(data):
     fg_total_length = sum(data['fg_seq_lengths'])
     bg_total_length = sum(data['bg_seq_lengths'])
     primer_dict = filter_primers_into_dict(data, fg_total_length, bg_total_length)
-    primers_with_ginis = calc_gini(data, primer_dict)
+    tasks = make_tasks(data, primer_dict)
+    pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
+    primers_with_ginis = pool.map(get_positions, tasks)
     df, primers_with_positions = make_df(primers_with_ginis, primer_dict, data)
     return df, primers_with_positions
 

@@ -70,12 +70,12 @@ def is_dimer(primers:list, primer_to_check:str) -> bool:
     Returns:
         bool: True if the primer forms a self dimer, primer-primer dimer, or is already contained. False otherwise
     '''
-    max_alignment = 3
+    max_alignment = 3 
     reversed_primer = primer_to_check[::-1]
-    if binding_score(primer_to_check, reversed_primer) > max_alignment:
-        return True
     if primers == []:
         return False
+    if binding_score(primer_to_check, reversed_primer) > max_alignment:
+        return True
     for primer in primers:
         if primer_to_check in primer:
             return True
@@ -114,38 +114,44 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
     all_indices = set()
 
     # edits the threshold that each primer must cover a certain percent of new indices
-    coverage_change = 0.1
+    coverage_change = 0.9
 
     primes = []
     coverage = 0
     index = 0
     total_fgs = 0
     total_bgs = 0
-    while coverage < data["target_coverage"] and index < len(df):
+    while coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
 
         # checks if primer forms a self dimer, is a substring of a primer already in the set, or forms a 
         # primer-primer dimer with any primers already in the set
-        if not is_dimer(primes, primer):
+        if primer not in primes:
+            if not is_dimer(primes, primer):
 
-            # stores the size of set before adding the next primer
-            old_index_count = len(all_indices)
+                # stores the size of set before adding the next primer
+                old_indices = all_indices.copy()
 
-            # iterates through the list of positions (binding sites) of the primer, adds the covered indices to the set
-            for pos in primers_with_positions[primer]:
-                all_indices |= set(range(int(pos), min(int(pos) + frag_length, fg_length)))
+                # iterates through the list of positions (binding sites) of the primer, adds the covered indices to the set
+                for pos in primers_with_positions[primer]:
+                    all_indices |= set(range(int(pos), min(int(pos) + frag_length, fg_length)))
 
-            # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-            if (len(all_indices) - old_index_count) > coverage_change * count * frag_length:
-                primes.append(primer)
-                total_fgs += count
-                total_bgs += df['bg_count'][index]
-                print("Current set: " + str(primes))
-                print("Current coverage: " + str((int(100000*len(all_indices))/fg_length)/100000))
+                # checks if the primer covered a high enough percent of bases that were not previously covered by the set
+                if (len(all_indices) - len(old_indices)) > coverage_change * count * frag_length:
+                    primes.append(primer)
+                    total_fgs += count
+                    total_bgs += df['bg_count'][index]
+                    print("Current set: " + str(primes))
+                    print("Current coverage: " + str((int(100000*len(all_indices))/fg_length)/100000))
+                else:
+                    all_indices = old_indices
         coverage = (len(all_indices))/fg_length
         index += 1
+        if index == len(df) - 1:
+            index = 0
+            coverage_change -= 0.1
     print("\nFinal primers: " + str(primes))
     print("Expected coverage: " + str(coverage))
     print("Total foreground hits: " + str(total_fgs))
@@ -153,8 +159,8 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
     print("Bg/fg ratio: " + str(int(10000*total_bgs/total_fgs)/10000))
 
 if __name__ == "__main__":
-    in_json = sys.argv[1]
-    # in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/new_src/new_params.json'
+    # in_json = sys.argv[1]
+    in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/new_src/new_params.json'
     with open(in_json, 'r') as f:
         data = json.load(f)
     df = pd.read_csv(data['data_dir'] + "/primers_df.csv")

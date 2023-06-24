@@ -34,7 +34,7 @@ def step1(data, fg_prefixes, fg_genomes, bg_prefixes, bg_genomes, min, max):
     print("Running jellyfish for background...")
     for i, bg_prefix in enumerate(bg_prefixes):
         for k in range(min, max+1, 1):
-            if not os.path.exists(bg_prefix+'_'+str(k)+'mer_all.txt'):
+            if not os.path.exists(bg_prefix+'_'+str(k)+'mer_all.jf'):
                 os.system("jellyfish count -m "+str(k) + " -s 1000000 -t " + str(data['cpus']) + " " + bg_genomes[i] + " -o " + bg_prefix+'_'+str(k)+'mer_all.jf')
 
     print("Done running jellyfish")
