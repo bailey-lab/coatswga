@@ -7,6 +7,7 @@ import pandas as pd
 import os
 import subprocess
 
+
 def gini_exact(array):
     """
     Calculates the Gini coefficient of a numpy array. Based on bottom equation from
@@ -35,6 +36,33 @@ def gini_exact(array):
     n = array.shape[0]
     # Gini coefficient:
     return ((np.sum((2 * index - n - 1) * array)) / (n * np.sum(array)))
+
+
+def rc(seq: str) -> str:
+    '''
+    Finds the reverse complement of the passed string
+
+    Args:
+        seq: sequence to process
+
+    Returns:
+        rev: the reverse complement of the passed sequence
+    '''
+    rev = ""
+    for char in seq:
+        if char == "G":
+            rev = rev + "C"
+        elif char == "C":
+            rev = rev + "G"
+        elif char == "A":
+            rev = rev + "T"
+        elif char == "T":
+            rev = rev + "A"
+        else:
+            print("Cannot compute reverse complement. " +
+                  seq + " is not a DNA sequence.")
+    return rev
+
 
 def filter_primers_into_dict(data, fg_total_length, bg_total_length):
     '''
@@ -73,12 +101,14 @@ def filter_primers_into_dict(data, fg_total_length, bg_total_length):
                             bg_count = 0
                             # iterate through each background genome given, querying the jellyfish files for counts and summing them
                             for bg_prefix in data['bg_prefixes']:
-                                count_tuple = subprocess.check_output(['jellyfish', 'query', bg_prefix+'_'+str(k)+'mer_all.jf', kmer]).decode().strip().split(' ')
+                                count_tuple = subprocess.check_output(
+                                    ['jellyfish', 'query', bg_prefix+'_'+str(k)+'mer_all.jf', kmer]).decode().strip().split(' ')
                                 bg_count += int(count_tuple[1])
                             # final check if background frequency is below threshold, if yes then add to the primer dict
                             if bg_count/bg_total_length < data["max_bg_freq"]:
                                 primer_dict[kmer] = [fg_count, bg_count]
     return primer_dict
+
 
 def make_tasks(data, primer_dict):
     '''
@@ -97,10 +127,14 @@ def make_tasks(data, primer_dict):
     # dicts = []
     for i, fg_genome in enumerate(data['fg_genomes']):
         for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
+            # stores primers in dictionary mapping primers to a list in the format {primer:[[postions], gini]}
             primers_per_k = {primer: [[]] for primer in primer_dict if len(primer) == k}
+            reverses_per_k = {rc(primer): [] for primer in primers_per_k}
             # dicts.append(get_positions((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i])))
-            tasks.append((primers_per_k, k, fg_genome, data['fg_seq_lengths'][i]))
+            tasks.append((primers_per_k, reverses_per_k, k,
+                         fg_genome, data['fg_seq_lengths'][i]))
     return tasks
+
 
 def get_positions(task):
     '''
@@ -118,7 +152,7 @@ def get_positions(task):
         get_gap_lengths(primer_dict, seq_length): dictionary mapping primers to their position indices and Gini index
     '''
     # breaks up the task
-    primer_dict, k, fg_genome, seq_length = task
+    primer_dict, revs, k, fg_genome, seq_length = task
 
     # opens the passed genome file to read
     with open(fg_genome, 'r') as f:
@@ -139,20 +173,24 @@ def get_positions(task):
             for i in range(len(combined)-k+1):
                 if combined[i:k+i] in primer_dict:
                     primer_dict[combined[i:k+i]][0].append(index)
+                elif combined[i:k+i] in revs:
+                    revs[combined[i:k+i]].append(index)
                 index += 1
             prev = stripped
-    # for each primer in the dictionary, calculates the gap lengths in between index positions
+    # for each primer in the dictionary, calculates the gap lengths in between index positions, uses those gaps to calculate the Gini
     for primer in primer_dict:
         if type(primer_dict[primer][0]) != list or primer_dict[primer] == []:
             continue
         positions = primer_dict[primer][0]
-        differences = [a_i - b_i for a_i, b_i in zip(positions[1:], positions[:-1])]
-        differences.append(seq_length-positions[-1])
+        differences = [a_i - b_i for a_i,
+                       b_i in zip(positions[1:], positions[:-1])]
+        differences.append(seq_length - positions[-1])
         differences.append(positions[0])
         primer_dict[primer].append(gini_exact(differences))
-    return primer_dict
+    return (primer_dict, revs)
 
-def make_df(primers_with_ginis:list, primer_dict:dict, data):
+
+def make_df(primer_revs_tuples: list, primer_dict: dict, data):
     '''
     Takes in the haphazard dictionaries containing the primers of different lengths and combines them into a pandas DataFrame and a 
     dictionary mapping primers to a list their position indices
@@ -170,27 +208,32 @@ def make_df(primers_with_ginis:list, primer_dict:dict, data):
     '''
     primers_as_list = []
     primers_with_positions = {}
-    for diction in primers_with_ginis:
-        for primer in diction:
+    revs_with_positions = {}
+    for tup in primer_revs_tuples:
+        for primer in tup[0]:
             # if diction[primer][1] < data["max_gini"]:
-            primers_as_list.append([primer, int(primer_dict[primer][0]), int(primer_dict[primer][1]), diction[primer][1]])
-            primers_with_positions[primer] = diction[primer][0]
+            primers_as_list.append([primer, int(primer_dict[primer][0]), int(primer_dict[primer][1]), tup[0][primer][1]])
+            primers_with_positions[primer] = tup[0][primer][0]
+        for rev in tup[1]:
+            revs_with_positions[rev] = tup[1][rev]
     df = pd.DataFrame(primers_as_list, columns=['primer', 'fg_count', 'bg_count', 'gini'])
     # df['gini_bool'] = df.apply(lambda x: x['gini'] is not None and x['gini'] < data['max_gini'], axis=1)
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
     # sorted_df = df.sort_values(by=["ratio"])[:data['max_primer']]
     sorted_df = df.sort_values(by=["ratio"])
-    return sorted_df, primers_with_positions
+    return sorted_df, primers_with_positions, revs_with_positions
+
 
 def main(data):
     fg_total_length = sum(data['fg_seq_lengths'])
     bg_total_length = sum(data['bg_seq_lengths'])
-    primer_dict = filter_primers_into_dict(data, fg_total_length, bg_total_length)
+    primer_dict = filter_primers_into_dict(
+        data, fg_total_length, bg_total_length)
     tasks = make_tasks(data, primer_dict)
     pool = multiprocessing.Pool(processes=multiprocessing.cpu_count())
-    primers_with_ginis = pool.map(get_positions, tasks)
-    df, primers_with_positions = make_df(primers_with_ginis, primer_dict, data)
-    return df, primers_with_positions
+    primer_revs_tuples = pool.map(get_positions, tasks)
+    return make_df(primer_revs_tuples, primer_dict, data)
+
 
 if __name__ == "__main__":
     in_json = sys.argv[1]
@@ -203,5 +246,6 @@ if __name__ == "__main__":
         df.to_csv(data['data_dir'] + "primers_df.csv")
     with open(data['data_dir'] + "/primers_with_ginis.csv", 'w+') as f:
         for primer in primers_with_positions:
-            to_write = str(primer) + ":" + str(primers_with_positions[primer]) + "\n"
+            to_write = str(primer) + ":" + \
+                str(primers_with_positions[primer]) + "\n"
             f.write(to_write)

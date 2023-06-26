@@ -3,6 +3,7 @@ import numpy as np
 import sys
 import json
 from numba import njit
+from filter import rc
 
 def binding_score(seq1, seq2):
     '''
@@ -85,7 +86,7 @@ def is_dimer(primers:list, primer_to_check:str) -> bool:
             return True
     return False
 
-def main(df:pd.DataFrame, primers_with_positions:dict, data):
+def main(df:pd.DataFrame, primers_with_positions:dict, data, reverse_positions:dict):
     """
     Finds a set of primers with the highest specificity that theoretically meets the target_coverage value specified in the JSON file. 
     Primers in the set should not form self dimers or primer-primer dimers within the set. Does this by treating each base in the
@@ -117,6 +118,7 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
     coverage_change = 0.9
 
     primes = []
+    rev_index = []
     coverage = 0
     index = 0
     total_fgs = 0
@@ -124,7 +126,6 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
     while coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
-        count = df['fg_count'][index]
 
         # checks if primer forms a self dimer, is a substring of a primer already in the set, or forms a 
         # primer-primer dimer with any primers already in the set
@@ -133,15 +134,24 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
 
                 # stores the size of set before adding the next primer
                 old_indices = all_indices.copy()
+                new_covered = 0
+
+                mat = [ list(filter(lambda x: x > 0 and x <= frag_length, [b - a for b in (rev_index + reverse_positions[rc(primer)])])) for a in primers_with_positions[primer]]
+                primer_positions = primers_with_positions[primer]
+                for i in range(len(mat)):
+                    if mat[i] != []:
+                        all_indices |= set(range(int(primer_positions[i]), primer_positions[i] + max(mat[i])))
+                        new_covered += max(mat[i])
 
                 # iterates through the list of positions (binding sites) of the primer, adds the covered indices to the set
-                for pos in primers_with_positions[primer]:
-                    all_indices |= set(range(int(pos), min(int(pos) + frag_length, fg_length)))
+                # for pos in primers_with_positions[primer]:
+                #     all_indices |= set(range(int(pos), min(int(pos) + frag_length, fg_length)))
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (len(all_indices) - len(old_indices)) > coverage_change * count * frag_length:
+                if (len(all_indices) - len(old_indices)) > coverage_change * new_covered:
                     primes.append(primer)
-                    total_fgs += count
+                    rev_index = rev_index + reverse_positions[rc(primer)]
+                    total_fgs += df['fg_count'][index]
                     total_bgs += df['bg_count'][index]
                     print("Current set: " + str(primes))
                     print("Current coverage: " + str((int(100000*len(all_indices))/fg_length)/100000))
@@ -149,7 +159,7 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
                     all_indices = old_indices
         coverage = (len(all_indices))/fg_length
         index += 1
-        if index == len(df) - 1:
+        if index == len(df):
             index = 0
             coverage_change -= 0.1
     print("\nFinal primers: " + str(primes))

@@ -2,6 +2,7 @@ import sys
 import os
 import json
 
+
 def run_jellyfish(data, genome_fname=None, output_prefix=None, min=6, max=12):
     """
     Runs jellyfish program using the output_prefix and transfroms the kmer count information to txt files. Count k-mers within range 
@@ -14,10 +15,13 @@ def run_jellyfish(data, genome_fname=None, output_prefix=None, min=6, max=12):
     """
     for k in range(min, max+1, 1):
         if not os.path.exists(output_prefix+'_'+str(k)+'mer_all.txt'):
-            os.system("jellyfish count -m "+str(k) + " -s 1000000 -t " + str(data['cpus']) + " " + genome_fname + " -o " + output_prefix+'_'+str(k)+'mer_all.jf')
-            os.system("jellyfish dump -c " + output_prefix+'_'+str(k)+'mer_all.jf' + " > " + output_prefix+'_'+str(k)+'mer_all.txt')
+            os.system("jellyfish count -m "+str(k) + " -s 1000000 -t " + str(
+                data['cpus']) + " " + genome_fname + " -o " + output_prefix+'_'+str(k)+'mer_all.jf')
+            os.system("jellyfish dump -c " + output_prefix+'_'+str(k) +
+                      'mer_all.jf' + " > " + output_prefix+'_'+str(k)+'mer_all.txt')
         if os.path.exists(output_prefix+'_'+str(k)+'mer_all.jf'):
             os.system("rm " + output_prefix+'_'+str(k)+'mer_all.jf')
+
 
 def step1(data, fg_prefixes, fg_genomes, bg_prefixes, bg_genomes, min, max):
     """
@@ -35,12 +39,16 @@ def step1(data, fg_prefixes, fg_genomes, bg_prefixes, bg_genomes, min, max):
     for i, bg_prefix in enumerate(bg_prefixes):
         for k in range(min, max+1, 1):
             if not os.path.exists(bg_prefix+'_'+str(k)+'mer_all.jf'):
-                os.system("jellyfish count -m "+str(k) + " -s 1000000 -t " + str(data['cpus']) + " " + bg_genomes[i] + " -o " + bg_prefix+'_'+str(k)+'mer_all.jf')
+                os.system("jellyfish count -m "+str(k) + " -s 1000000 -t " + str(
+                    data['cpus']) + " " + bg_genomes[i] + " -o " + bg_prefix+'_'+str(k)+'mer_all.jf')
 
     print("Done running jellyfish")
 
+
 def main(data):
-    step1(data, data["fg_prefixes"], data["fg_genomes"], data['bg_prefixes'], data['bg_genomes'], int(data["min_primer_length"]), int(data["max_primer_length"]))
+    step1(data, data["fg_prefixes"], data["fg_genomes"], data['bg_prefixes'], data['bg_genomes'], int(
+        data["min_primer_length"]), int(data["max_primer_length"]))
+
 
 if __name__ == "__main__":
     in_json = sys.argv[1]
