@@ -11,11 +11,11 @@ def main():
         print('Usage: python3 main.py <STEP: find|sets|all> [PARAMS FILEPATH]')
         quit()
     else:
-        # in_json = sys.argv[2]
-        # step = sys.argv[1]
+        in_json = sys.argv[2]
+        step = sys.argv[1]
 
-        step = "sets"
-        in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/new_src/new_params.json'
+        # step = "sets"
+        # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/new_src/new_params.json'
 
         with open(in_json, 'r') as f:
             data = json.load(f)
@@ -32,12 +32,13 @@ def main():
             print("Invalid step. Input is 'find', 'sets', or 'all'.")
 
 if __name__ == "__main__":
-    step = "sets"
-    in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
+    # step = "sets"
+    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
 
-    with open(in_json, 'r') as f:
-        data = json.load(f)
-    find.main(data)
-    df, primers_with_positions, revs_with_positions = filter.main(data)
-    sets.main(df, primers_with_positions, data, revs_with_positions)
+    # with open(in_json, 'r') as f:
+    #     data = json.load(f)
+    # find.main(data)
+    # df, primers_with_positions, revs_with_positions = filter.main(data)
+    # sets.main(df, primers_with_positions, data, revs_with_positions)
+    main()
     
