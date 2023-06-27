@@ -178,8 +178,9 @@ def make_df(primers_with_ginis:list, primer_dict:dict, data):
     df = pd.DataFrame(primers_as_list, columns=['primer', 'fg_count', 'bg_count', 'gini'])
     # df['gini_bool'] = df.apply(lambda x: x['gini'] is not None and x['gini'] < data['max_gini'], axis=1)
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
+    df['gini_plus_ratio'] = df.apply(lambda x: x['gini'] + x['ratio'], axis=1)
     # sorted_df = df.sort_values(by=["ratio"])[:data['max_primer']]
-    sorted_df = df.sort_values(by=["ratio"])
+    sorted_df = df.sort_values(by=["gini_plus_ratio"])
     return sorted_df, primers_with_positions
 
 def main(data):

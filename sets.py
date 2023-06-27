@@ -144,19 +144,19 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     print("Current set: " + str(primes))
-                    print("Current coverage: " + str((int(100000*len(all_indices))/fg_length)/100000))
+                    print("Current coverage: " + str((int(1000*len(all_indices))/fg_length)/1000))
                 else:
                     all_indices = old_indices
         coverage = (len(all_indices))/fg_length
         index += 1
-        if index == len(df) - 1:
+        if index == len(df):
             index = 0
             coverage_change -= 0.1
     print("\nFinal primers: " + str(primes))
     print("Expected coverage: " + str(coverage))
     print("Total foreground hits: " + str(total_fgs))
     print("Total background hits: " + str(total_bgs))
-    print("Bg/fg ratio: " + str(int(10000*total_bgs/total_fgs)/10000))
+    print("Bg/fg ratio: " + str(int(1000*total_bgs/total_fgs)/1000))
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]
