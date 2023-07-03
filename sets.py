@@ -1,24 +1,9 @@
 import pandas as pd
 import numpy as np
-import multiprocessing as mp
 import json
 from numba import njit
 from multiply_align.algorithms import PrimerDimerLike
 from filter import rc
-
-def get_coverages(task):
-    df, prim_w_pos, frag_length, fg_length = task
-    fwd_cov = {}
-    rev_cov = {}
-    for primer in df:
-        fwd = set()
-        rev = set()
-        for pos in prim_w_pos[primer]:
-            fwd |= set(range(int(pos), min(int(pos) + frag_length, fg_length)))
-            rev |= set(range(max(int(pos) - frag_length, 0), int(pos)))
-        fwd_cov[primer] = fwd
-        rev_cov[primer] = rev
-    return (fwd_cov, rev_cov)
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:
     '''
@@ -69,29 +54,14 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions, data):
     fg_length = sum(data["fg_seq_lengths"])
     frag_length = data["fragment_length"]
 
-    fwd_sets = {}
-    rev_sets = {}
-    print("Calculating coverage sets...")
-    if data['cpus'] > 1:
-        tasks = []
-        for sub in np.array_split(df['primer'], data['cpus']):
-            tasks.append((sub, primers_with_positions, frag_length, fg_length))
-        pool = mp.Pool(processes=len(tasks))
-        coverage_tups = pool.map(get_coverages, tasks)
-        for tup in coverage_tups:
-            fwd_sets.update(tup[0])
-            rev_sets.update(tup[1])
-    else:
-        fwd_sets, rev_sets = get_coverages(df['primer'], primers_with_positions, data)
-    
-
-
     # set to hold the covered indices
     fwd_indices = set()
     rev_indices = set()
 
     # edits the threshold that each primer must cover a certain percent of new indices
     coverage_change = 0.9
+
+    prim_coverage = {}
 
     primes = []
     fwd_coverage = 0
@@ -113,10 +83,15 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions, data):
                 old_fwd = fwd_indices.copy()
 
                 # iterates through the list of positions (binding sites) of the primer, adds the covered indices to the set
-                fwd_indices |= fwd_sets[primer]
+                if primer not in prim_coverage:
+                    covered = set()
+                    for pos in primers_with_positions[primer]:
+                        covered |= set(range(int(pos), min(int(pos) + frag_length, fg_length)))
+                    prim_coverage[primer] = covered
+                fwd_indices |= prim_coverage[primer]
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (len(fwd_indices) - len(old_fwd)) > coverage_change * len(fwd_sets[primer]):
+                if (len(fwd_indices) - len(old_fwd)) > coverage_change * len(prim_coverage[primer]):
                     primes.append(primer)
                     for pos in rev_positions[rc(primer)]:
                         rev_indices |= set(range(max(int(pos) - frag_length, 0), int(pos)))
@@ -135,6 +110,7 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions, data):
     rev_coverage = len(rev_indices)/fg_length
     coverage_change = 0.9
     index = 0
+    prim_coverage = {}
     print("Finding reverse set...")
     while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
@@ -150,10 +126,15 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions, data):
                 old_rev = rev_indices.copy()
 
                 # iterates through the list of positions (binding sites) of the primer, adds the covered indices to the set
-                rev_indices |= rev_sets[primer]
+                if primer not in prim_coverage:
+                    covered = set()
+                    for pos in primers_with_positions[primer]:
+                        covered |= set(range(max(int(pos) - frag_length, 0), int(pos)))
+                    prim_coverage[primer] = covered
+                rev_indices |= prim_coverage[primer]
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (len(rev_indices) - len(old_rev)) > coverage_change * len(rev_sets[primer]):
+                if (len(rev_indices) - len(old_rev)) > coverage_change * len(prim_coverage[primer]):
                     primes.append(rc(primer))
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
