@@ -29,11 +29,12 @@ def main():
             print("Invalid step. Input is 'find', 'sets', or 'all'.")
 
 if __name__ == "__main__":
-    step = "sets"
-    in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
-    with open(in_json, 'r') as f:
-        data = json.load(f)
-    find.main(data)
-    df, primers_with_positions, rev_pos = filter.main(data)
-    sets.main(df, primers_with_positions, rev_pos, data)
+    # step = "sets"
+    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
+    # with open(in_json, 'r') as f:
+    #     data = json.load(f)
+    # find.main(data)
+    # df, primers_with_positions, rev_pos = filter.main(data)
+    # sets.main(df, primers_with_positions, rev_pos, data)
+    main()
     
