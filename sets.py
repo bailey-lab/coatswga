@@ -1,61 +1,24 @@
 import pandas as pd
 import numpy as np
-import sys
+import multiprocessing as mp
 import json
 from numba import njit
+from multiply_align.algorithms import PrimerDimerLike
+from filter import rc
 
-def binding_score(seq1, seq2):
-    '''
-    Helper method to calculate the "binding score" between two primers.
-
-    Args:
-        seq1: First primer to compare
-        seq2: Second primer to compare
-
-    Returns:
-        max_score: The highest binding score among all possible alignments of the two primers
-    '''
-
-    # Intialized dictionary with scores for binding. +1 if the two bases bind, -1 otherwise.
-    comps = {
-        "A": {
-            "A": -1,
-            "G": -1,
-            "C": -1,
-            "T": 1
-        },
-        "G": {
-            "A": -1,
-            "G": -1,
-            "C": 1,
-            "T": -1
-        },
-        "C": {
-            "A": -1,
-            "G": 1,
-            "C": -1,
-            "T": -1
-        },
-        "T": {
-            "A": 1,
-            "G": -1,
-            "C": -1,
-            "T": -1
-        }
-    }
-    max_score = 0
-
-    # The length of the shorter primer is needed so there are no indexing errors
-    shorter_seq = min(len(seq1),len(seq2))
-
-    # Iterates through each possible alignment of the two primers and scores it based on the comps dictionary
-    for i in range(shorter_seq):
-        score = 0
-        for j in range(shorter_seq-i):
-            score += comps[seq1[i+j]][seq2[j]]
-        if score > max_score:
-            max_score = score
-    return max_score
+def get_coverages(task):
+    df, prim_w_pos, frag_length, fg_length = task
+    fwd_cov = {}
+    rev_cov = {}
+    for primer in df:
+        fwd = set()
+        rev = set()
+        for pos in prim_w_pos[primer]:
+            fwd |= set(range(int(pos), min(int(pos) + frag_length, fg_length)))
+            rev |= set(range(max(int(pos) - frag_length, 0), int(pos)))
+        fwd_cov[primer] = fwd
+        rev_cov[primer] = rev
+    return (fwd_cov, rev_cov)
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:
     '''
@@ -70,22 +33,20 @@ def is_dimer(primers:list, primer_to_check:str) -> bool:
     Returns:
         bool: True if the primer forms a self dimer, primer-primer dimer, or is already contained. False otherwise
     '''
-    max_alignment = 3 
-    reversed_primer = primer_to_check[::-1]
+    model = PrimerDimerLike()
+    model.load_parameters()
     if primers == []:
         return False
-    if binding_score(primer_to_check, reversed_primer) > max_alignment:
-        return True
     for primer in primers:
-        if primer_to_check in primer:
+        if primer_to_check in primer or primer in primer_to_check:
             return True
-        if primer in primer_to_check:
-            return True
-        if binding_score(primer, reversed_primer) > max_alignment:
+        model.set_primers(primer, primer_to_check)
+        model.align()
+        if model.score < -2.79:
             return True
     return False
 
-def main(df:pd.DataFrame, primers_with_positions:dict, data):
+def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions, data):
     """
     Finds a set of primers with the highest specificity that theoretically meets the target_coverage value specified in the JSON file. 
     Primers in the set should not form self dimers or primer-primer dimers within the set. Does this by treating each base in the
@@ -102,26 +63,43 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
         data: A JSON object containing hyperparameters
     """
 
-    print("Finding sets...")
-
     # indices of rows get scrambled when sorting by ratio, have to reset indices to iterate through in order
     df = df.reset_index(drop=True)
 
     fg_length = sum(data["fg_seq_lengths"])
     frag_length = data["fragment_length"]
 
+    fwd_sets = {}
+    rev_sets = {}
+    print("Calculating coverage sets...")
+    if data['cpus'] > 1:
+        tasks = []
+        for sub in np.array_split(df['primer'], data['cpus']):
+            tasks.append((sub, primers_with_positions, frag_length, fg_length))
+        pool = mp.Pool(processes=len(tasks))
+        coverage_tups = pool.map(get_coverages, tasks)
+        for tup in coverage_tups:
+            fwd_sets.update(tup[0])
+            rev_sets.update(tup[1])
+    else:
+        fwd_sets, rev_sets = get_coverages(df['primer'], primers_with_positions, data)
+    
+
+
     # set to hold the covered indices
-    all_indices = set()
+    fwd_indices = set()
+    rev_indices = set()
 
     # edits the threshold that each primer must cover a certain percent of new indices
     coverage_change = 0.9
 
     primes = []
-    coverage = 0
+    fwd_coverage = 0
     index = 0
     total_fgs = 0
     total_bgs = 0
-    while coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
+    print("Finding forward set...")
+    while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
@@ -132,28 +110,66 @@ def main(df:pd.DataFrame, primers_with_positions:dict, data):
             if not is_dimer(primes, primer):
 
                 # stores the size of set before adding the next primer
-                old_indices = all_indices.copy()
+                old_fwd = fwd_indices.copy()
 
                 # iterates through the list of positions (binding sites) of the primer, adds the covered indices to the set
-                for pos in primers_with_positions[primer]:
-                    all_indices |= set(range(int(pos), min(int(pos) + frag_length, fg_length)))
+                fwd_indices |= fwd_sets[primer]
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (len(all_indices) - len(old_indices)) > coverage_change * count * frag_length:
+                if (len(fwd_indices) - len(old_fwd)) > coverage_change * len(fwd_sets[primer]):
                     primes.append(primer)
+                    for pos in rev_positions[rc(primer)]:
+                        rev_indices |= set(range(max(int(pos) - frag_length, 0), int(pos)))
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
-                    print("Current set: " + str(primes))
-                    print("Current coverage: " + str((int(1000*len(all_indices))/fg_length)/1000))
+                    fwd_coverage = len(fwd_indices)/fg_length
+                    print(str(primer) + " added to set")
+                    print("Current forward coverage: " + str((int(1000*len(fwd_indices))/fg_length)/1000))
                 else:
-                    all_indices = old_indices
-        coverage = (len(all_indices))/fg_length
+                    fwd_indices = old_fwd
         index += 1
         if index == len(df):
             index = 0
             coverage_change -= 0.1
+    
+    rev_coverage = len(rev_indices)/fg_length
+    coverage_change = 0.9
+    index = 0
+    print("Finding reverse set...")
+    while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
+        # Primer to check and the counts of foreground hits
+        primer = df['primer'][index]
+        count = df['fg_count'][index]
+
+        # checks if primer forms a self dimer, is a substring of a primer already in the set, or forms a 
+        # primer-primer dimer with any primers already in the set
+        if primer not in primes:
+            if not is_dimer(primes, rc(primer)):
+
+                # stores the size of set before adding the next primer
+                old_rev = rev_indices.copy()
+
+                # iterates through the list of positions (binding sites) of the primer, adds the covered indices to the set
+                rev_indices |= rev_sets[primer]
+
+                # checks if the primer covered a high enough percent of bases that were not previously covered by the set
+                if (len(rev_indices) - len(old_rev)) > coverage_change * len(rev_sets[primer]):
+                    primes.append(rc(primer))
+                    total_fgs += count
+                    total_bgs += df['bg_count'][index]
+                    rev_coverage = len(rev_indices)/fg_length
+                    # print("Current set: " + str(primes))
+                    # print("Current reverse coverage: " + str((int(1000*len(rev_indices))/fg_length)/1000))
+                else:
+                    rev_indices = old_rev
+        index += 1
+        if index == len(df):
+            index = 0
+            coverage_change -= 0.1
+
     print("\nFinal primers: " + str(primes))
-    print("Expected coverage: " + str(coverage))
+    print("Expected forward coverage: " + str(fwd_coverage))
+    print("Expected reverse coverage: " + str(rev_coverage))
     print("Total foreground hits: " + str(total_fgs))
     print("Total background hits: " + str(total_bgs))
     print("Bg/fg ratio: " + str(int(1000*total_bgs/total_fgs)/1000))
