@@ -114,11 +114,11 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions:dict, data)
                     total_bgs += df['bg_count'][index]
                     fwd_coverage = fwd_len/fg_length
                     print(str(primer) + " added to set")
-                    print("Current forward coverage: " + str((int(1000*fwd_coverage)/1000)))
+                    print("Current forward coverage: " + str(round(fwd_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
-            coverage_change -= 0.1
+            coverage_change = round(coverage_change - 0.1, 2)
             print("Coverage change factor reduced to " + str(coverage_change))
     
     rev_coverage = rev_len/fg_length
@@ -144,19 +144,19 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions:dict, data)
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/fg_length
-                    # print("Current set: " + str(primes))
-                    # print("Current reverse coverage: " + str((int(1000*len(rev_indices))/fg_length)/1000))
+                    print(str(primer) + " added to set")
+                    print("Current reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
-            coverage_change -= 0.1
+            coverage_change = round(coverage_change - 0.1, 2)
 
     print("\nFinal primers: " + str(primes))
     print("Expected forward coverage: " + str(fwd_coverage))
     print("Expected reverse coverage: " + str(rev_coverage))
     print("Total foreground hits: " + str(total_fgs))
     print("Total background hits: " + str(total_bgs))
-    print("Bg/fg ratio: " + str(int(1000*total_bgs/total_fgs)/1000))
+    print("Bg/fg ratio: " + str(round(total_bgs/total_fgs, 3)))
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]
