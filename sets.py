@@ -52,7 +52,7 @@ def bedtooler(pos_tups:list, all_inters:list, data_dir:str):
         length += end - start
     return length, inters
 
-def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions:dict, data):
+def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
     """
     Finds a set of primers with the highest specificity that theoretically meets the target_coverage value specified in the JSON file. 
     Primers in the set should not form self dimers or primer-primer dimers within the set. Does this by treating each base in the
@@ -72,13 +72,15 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions:dict, data)
     # indices of rows get scrambled when sorting by ratio, have to reset indices to iterate through in order
     df = df.reset_index(drop=True)
 
-    fg_length = sum(data["fg_seq_lengths"])
+    total_fg_length = sum(data['fg_seq_lengths'])
     frag_length = data["fragment_length"]
+    seq_lengths = data['fg_seq_lengths']
+    prefixes = data['fg_prefixes']
 
     # set to hold the covered indices
-    fwd_inters = []
+    fwd_inters = {prefix: [] for prefix in prefixes}
+    rev_inters = {prefix: [] for prefix in prefixes}
     fwd_len = 0
-    rev_inters = []
     rev_len = 0
 
     # edits the threshold that each primer must cover a certain percent of new indices
@@ -99,20 +101,29 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions:dict, data)
         # primer-primer dimer with any primers already in the set
         if primer not in primes:
             if not is_dimer(primes, primer):
-
-                length, intervals = bedtooler([(int(pos), min(fg_length, int(pos) + frag_length)) for pos in primers_with_positions[primer]], 
-                                              fwd_inters, data['data_dir'])
+                
+                tot_len = 0
+                new_inters = fwd_inters
+                for i, prefix in enumerate(prefixes):
+                    if primer in primers_with_positions[prefix]:
+                        length, intervals = bedtooler([(int(pos), min(seq_lengths[i], int(pos) + frag_length)) for pos in primers_with_positions[prefix][primer]], 
+                                                new_inters[prefix], data['data_dir'])
+                        tot_len += length
+                        new_inters[prefix] = intervals
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (length - fwd_len) > coverage_change * count * frag_length:
+                if (tot_len - fwd_len) >= coverage_change * count * frag_length:
                     primes.append(primer)
-                    fwd_len = length
-                    fwd_inters = intervals
-                    if rev_positions[rc(primer)] != ['']:
-                        rev_len, rev_inters = bedtooler([(max(0, int(pos) - frag_length), int(pos)) for pos in rev_positions[rc(primer)]], rev_inters, data['data_dir'])
+                    fwd_len = tot_len
+                    fwd_inters = new_inters
+                    for prefix in prefixes:
+                        if rc(primer) in rev_positions[prefix] and rev_positions[prefix][rc(primer)] != ['']:
+                            length, inters = bedtooler([(max(0, int(pos) - frag_length), int(pos)) for pos in rev_positions[prefix][rc(primer)]], rev_inters[prefix], data['data_dir'])
+                            rev_len += length
+                            rev_inters[prefix] = inters
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
-                    fwd_coverage = fwd_len/fg_length
+                    fwd_coverage = fwd_len/total_fg_length
                     print(str(primer) + " added to set")
                     print("Current forward coverage: " + str(round(fwd_coverage, 3)))
         index += 1
@@ -121,7 +132,7 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions:dict, data)
             coverage_change = round(coverage_change - 0.1, 2)
             print("Coverage change factor reduced to " + str(coverage_change))
     
-    rev_coverage = rev_len/fg_length
+    rev_coverage = rev_len/total_fg_length
     coverage_change = 0.9
     index = 0
     print("Finding reverse set...")
@@ -132,18 +143,26 @@ def main(df:pd.DataFrame, primers_with_positions:dict, rev_positions:dict, data)
 
         # checks if primer forms a self dimer, is a substring of a primer already in the set, or forms a 
         # primer-primer dimer with any primers already in the set
-        if primer not in primes:
+        if rc(primer) not in primes:
             if not is_dimer(primes, rc(primer)):
 
-                length, intervals = bedtooler([(max(0, int(pos) - frag_length), int(pos)) for pos in primers_with_positions[primer]], 
-                                              rev_inters, data['data_dir'])
-                
+                tot_len = 0
+                new_inters = rev_inters
+                for i, prefix in enumerate(prefixes):
+                    if rc(primer) in rev_positions[prefix]:
+                        length, intervals = bedtooler([(max(0, int(pos) - frag_length), int(pos)) for pos in primers_with_positions[prefix][primer]], 
+                                                    rev_inters[prefix], data['data_dir'])
+                        tot_len += length
+                        new_inters[prefix] = intervals 
+
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (length - rev_len) > coverage_change * count * frag_length:
+                if (tot_len - rev_len) >= coverage_change * count * frag_length:
                     primes.append(rc(primer))
+                    rev_len = tot_len
+                    rev_inters = new_inters
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
-                    rev_coverage = rev_len/fg_length
+                    rev_coverage = rev_len/total_fg_length
                     print(str(primer) + " added to set")
                     print("Current reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1

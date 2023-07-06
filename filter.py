@@ -98,7 +98,7 @@ def filter_primers_into_dict(task):
                     # final check if background frequency is below threshold, if yes then add to the primer dict
                     if bg_count/bg_total_length < max_freq:
                         primer_dict[kmer] = [fg_count, bg_count]
-    return primer_dict
+    return (prefix, primer_dict)
 
 def combine_dicts(dict_list:list):
     primer_dict = {}
@@ -106,7 +106,7 @@ def combine_dicts(dict_list:list):
         primer_dict.update(d)
     return primer_dict
 
-def make_tasks(data, primer_dict):
+def make_tasks(mini, maxi, genomes, primer_dict, seq_lengths, prefixes):
     '''
     Initalizes the tasks array so the filter process can be multithreaded
 
@@ -121,13 +121,13 @@ def make_tasks(data, primer_dict):
     print("Calculating Gini indices...")
     tasks = []
     # dicts = []
-    for i, fg_genome in enumerate(data['fg_genomes']):
-        for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
-            primers_per_k = {primer: [[]] for primer in primer_dict if len(primer) == k}
+    for i, fg_genome in enumerate(genomes):
+        for k in range(int(mini), int(maxi) + 1):
+            primers_per_k = {primer: [[]] for primer in primer_dict[prefixes[i]] if len(primer) == k}
             reverses_per_k = {rc(primer): [] for primer in primers_per_k}
             # dicts.append(get_positions((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i])))
             if primers_per_k != {}:
-                tasks.append((primers_per_k, reverses_per_k, k, fg_genome, data['fg_seq_lengths'][i]))
+                tasks.append((primers_per_k, reverses_per_k, k, fg_genome, seq_lengths[i], prefixes[i]))
     return tasks
 
 def get_positions(task):
@@ -146,7 +146,7 @@ def get_positions(task):
         get_gap_lengths(primer_dict, seq_length): dictionary mapping primers to their position indices and Gini index
     '''
     # breaks up the task
-    primer_dict, revs, k, fg_genome, seq_length = task
+    primer_dict, revs, k, fg_genome, seq_length, prefix = task
 
     # opens the passed genome file to read
     with open(fg_genome, 'r') as f:
@@ -180,9 +180,9 @@ def get_positions(task):
         differences.append(seq_length-positions[-1])
         differences.append(positions[0])
         primer_dict[primer].append(gini_exact(differences))
-    return (primer_dict, revs)
+    return (prefix, primer_dict, revs)
 
-def make_df(primers_revs_tuples:list, primer_dict:dict, data):
+def make_df(primers_revs_tuples:list, primer_dict:dict, prefixes:list):
     '''
     Takes in the haphazard dictionaries containing the primers of different lengths and combines them into a pandas DataFrame and a 
     dictionary mapping primers to a list their position indices
@@ -201,16 +201,20 @@ def make_df(primers_revs_tuples:list, primer_dict:dict, data):
     primers_as_list = []
     primers_with_positions = {}
     revs_with_positions = {}
-    for tup in primers_revs_tuples:
-        for primer in tup[0]:
-            primers_as_list.append([primer, int(primer_dict[primer][0]), int(primer_dict[primer][1]), tup[0][primer][1]])
-            primers_with_positions[primer] = tup[0][primer][0]
-        for rev in tup[1]:
-            revs_with_positions[rev] = tup[1][rev]
+    for prefix in prefixes:
+        primers_with_positions[prefix] = {}
+        revs_with_positions[prefix] = {}
+    for trip in primers_revs_tuples:
+        for primer in trip[1]:
+            primers_as_list.append([primer, int(primer_dict[trip[0]][primer][0]), int(primer_dict[trip[0]][primer][1]), trip[1][primer][1]])
+            primers_with_positions[trip[0]][primer] = trip[1][primer][0]
+        for rev in trip[2]:
+            revs_with_positions[trip[0]][rev] = trip[2][rev]
     df = pd.DataFrame(primers_as_list, columns=['primer', 'fg_count', 'bg_count', 'gini'])
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
     sorted_df = df.sort_values(by=["ratio", "fg_count", "gini"], ascending=[True, False, True])
-    return sorted_df, primers_with_positions, revs_with_positions
+
+    return df, primers_with_positions, revs_with_positions
 
 def main(data):
     bg_total_length = sum(data['bg_seq_lengths'])
@@ -224,32 +228,39 @@ def main(data):
     primer_dicts_list = pool.map(filter_primers_into_dict, tasks)
 
     primer_dict = {}
-    for d in primer_dicts_list:
-        primer_dict.update(d)
-    print(str(len(primer_dict)) + " primers left after filtering")
+    num_primes = 0
+    for tup in primer_dicts_list:
+        num_primes += len(tup[1])
+        if tup[0] not in primer_dict:
+            primer_dict[tup[0]] = {}
+        primer_dict[tup[0]].update(tup[1])
+    print(str(num_primes) + " primers left after filtering")
 
-    tasks = make_tasks(data, primer_dict)
+    tasks = make_tasks(data["min_primer_length"], data["max_primer_length"], data["fg_genomes"], primer_dict, data["fg_seq_lengths"], data["fg_prefixes"])
     pool = multiprocessing.Pool(processes=int(data['cpus']))
     primers_revs_tuples = pool.map(get_positions, tasks)
 
-    df, primers_with_positions, revs_with_positions = make_df(primers_revs_tuples, primer_dict, data)
+    df, primers_with_positions, revs_with_positions = make_df(primers_revs_tuples, primer_dict, data['fg_prefixes'])
 
     if data["write"]:
         df.to_csv(data['data_dir'] + "/primers_df.csv")
-        with open(data['data_dir'] + "/primers_with_positions.csv", 'w+') as f:
-            for primer in primers_with_positions:
-                to_write = str(primer) + ":" + str(primers_with_positions[primer]) + "\n"
-                f.write(to_write)
-        with open(data['data_dir'] + "/reverses_with_positions.csv", 'w+') as f:
-            for primer in revs_with_positions:
-                to_write = str(primer) + ":" + str(revs_with_positions[primer]) + "\n"
-                f.write(to_write)
+        for i, prefix in enumerate(data['fg_prefixes']):
+            name = prefix.split('/')[-1]
+            if len(primers_with_positions[prefix]) > 0:
+                with open(data['data_dir'] + "/" + name + "_primers_with_positions.csv", 'w+') as f:
+                    for primer in primers_with_positions[prefix]:
+                        to_write = str(primer) + ":" + str(primers_with_positions[prefix][primer]) + "\n"
+                        f.write(to_write)
+                with open(data['data_dir'] + "/" + name + "_reverses_with_positions.csv", 'w+') as f:
+                    for primer in revs_with_positions[prefix]:
+                        to_write = str(primer) + ":" + str(revs_with_positions[prefix][primer]) + "\n"
+                        f.write(to_write)
 
     return df, primers_with_positions, revs_with_positions
 
 if __name__ == "__main__":
-    in_json = sys.argv[1]
-    # in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/new_src/my_params.json'
+    # in_json = sys.argv[1]
+    in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
     with open(in_json, 'r') as f:
         data = json.load(f)
     main(data)

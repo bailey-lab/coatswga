@@ -32,7 +32,7 @@ def main():
             find.main(data)
         elif step == "sets":
             df, primers_with_positions, rev_pos = filter.main(data)
-            sets.main(df, primers_with_positions, data)
+            sets.main(df, primers_with_positions, rev_pos, data)
         elif step == "all":
             find.main(data)
             df, primers_with_positions, rev_pos = filter.main(data)
