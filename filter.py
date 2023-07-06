@@ -4,7 +4,6 @@ import json
 import melting
 import numpy as np
 import pandas as pd
-import os
 import subprocess
 
 def gini_exact(array):
@@ -61,7 +60,7 @@ def rc(seq: str) -> str:
                   seq + " is not a DNA sequence.")
     return rev
 
-def filter_primers_into_dict(data, fg_total_length, bg_total_length):
+def filter_primers_into_dict(task):
     '''
     Iterates through each possible kmer in the foreground genome. Filters by melting temperature, foreground count, and background
     count. Filters can all be customized in the JSON file.
@@ -74,33 +73,37 @@ def filter_primers_into_dict(data, fg_total_length, bg_total_length):
     Returns:
         primer_dict: dictionary mapping the primers that pass the filters to a list containing amount of foreground and background hits
     '''
+    prefix, k, data, bg_total_length = task
     primer_dict = {}
-    print("Filtering primers...")
     max_freq = 1/data['fragment_length']
     # for each prefix, iterate through each kmer length to search in the jellyfish files
-    for prefix in data["fg_prefixes"]:
-        for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
-            with open(prefix+'_'+str(k)+'mer_all.txt', 'r') as f_in:
-                for line in f_in:
-                    # jellyfish dump outputs in the format "[kmer] [count]" so split on space to separate
-                    tupled = line.strip().split(" ")
-                    # isolate kmer
-                    kmer = tupled[0]
-                    # isolate count
-                    fg_count = int(tupled[1])
-                    if fg_count > data["min_fg_count"]:
-                        # calculate melting temp of the kmer
-                        tm = melting.temp(kmer)
-                        # check melting temp is within range
-                        if tm < data['max_tm'] and tm > data['min_tm']:
-                            bg_count = 0
-                            # iterate through each background genome given, querying the jellyfish files for counts and summing them
-                            for bg_prefix in data['bg_prefixes']:
-                                count_tuple = subprocess.check_output(['jellyfish', 'query', bg_prefix+'_'+str(k)+'mer_all.jf', kmer]).decode().strip().split(' ')
-                                bg_count += int(count_tuple[1])
-                            # final check if background frequency is below threshold, if yes then add to the primer dict
-                            if bg_count/bg_total_length < max_freq:
-                                primer_dict[kmer] = [fg_count, bg_count]
+    with open(prefix+'_'+str(k)+'mer_all.txt', 'r') as f_in:
+        for line in f_in:
+            # jellyfish dump outputs in the format "[kmer] [count]" so split on space to separate
+            tupled = line.strip().split(" ")
+            # isolate kmer
+            kmer = tupled[0]
+            # isolate count
+            fg_count = int(tupled[1])
+            if fg_count > data["min_fg_count"]:
+                # calculate melting temp of the kmer
+                tm = melting.temp(kmer)
+                # check melting temp is within range
+                if tm < data['max_tm'] and tm > data['min_tm']:
+                    bg_count = 0
+                    # iterate through each background genome given, querying the jellyfish files for counts and summing them
+                    for bg_prefix in data['bg_prefixes']:
+                        count_tuple = subprocess.check_output(['jellyfish', 'query', bg_prefix+'_'+str(k)+'mer_all.jf', kmer]).decode().strip().split(' ')
+                        bg_count += int(count_tuple[1])
+                    # final check if background frequency is below threshold, if yes then add to the primer dict
+                    if bg_count/bg_total_length < max_freq:
+                        primer_dict[kmer] = [fg_count, bg_count]
+    return primer_dict
+
+def combine_dicts(dict_list:list):
+    primer_dict = {}
+    for d in dict_list:
+        primer_dict.update(d)
     return primer_dict
 
 def make_tasks(data, primer_dict):
@@ -206,19 +209,42 @@ def make_df(primers_revs_tuples:list, primer_dict:dict, data):
             revs_with_positions[rev] = tup[1][rev]
     df = pd.DataFrame(primers_as_list, columns=['primer', 'fg_count', 'bg_count', 'gini'])
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
-    df['gini_plus_ratio'] = df.apply(lambda x: x['gini'] + x['ratio'], axis=1)
-    sorted_df = df.sort_values(by=["gini_plus_ratio"])
+    sorted_df = df.sort_values(by=["ratio", "fg_count", "gini"], ascending=[True, False, True])
     return sorted_df, primers_with_positions, revs_with_positions
 
 def main(data):
-    fg_total_length = sum(data['fg_seq_lengths'])
     bg_total_length = sum(data['bg_seq_lengths'])
-    primer_dict = filter_primers_into_dict(data, fg_total_length, bg_total_length)
+
+    print("Filtering primers...")
+    tasks = []
+    for prefix in data["fg_prefixes"]:
+        for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
+            tasks.append((prefix, k, data, bg_total_length))
+    pool = multiprocessing.Pool(processes=int(data['cpus']))
+    primer_dicts_list = pool.map(filter_primers_into_dict, tasks)
+
+    primer_dict = {}
+    for d in primer_dicts_list:
+        primer_dict.update(d)
     print(str(len(primer_dict)) + " primers left after filtering")
+
     tasks = make_tasks(data, primer_dict)
     pool = multiprocessing.Pool(processes=int(data['cpus']))
     primers_revs_tuples = pool.map(get_positions, tasks)
+
     df, primers_with_positions, revs_with_positions = make_df(primers_revs_tuples, primer_dict, data)
+
+    if data["write"]:
+        df.to_csv(data['data_dir'] + "/primers_df.csv")
+        with open(data['data_dir'] + "/primers_with_positions.csv", 'w+') as f:
+            for primer in primers_with_positions:
+                to_write = str(primer) + ":" + str(primers_with_positions[primer]) + "\n"
+                f.write(to_write)
+        with open(data['data_dir'] + "/reverses_with_positions.csv", 'w+') as f:
+            for primer in revs_with_positions:
+                to_write = str(primer) + ":" + str(revs_with_positions[primer]) + "\n"
+                f.write(to_write)
+
     return df, primers_with_positions, revs_with_positions
 
 if __name__ == "__main__":
@@ -226,12 +252,5 @@ if __name__ == "__main__":
     # in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/new_src/my_params.json'
     with open(in_json, 'r') as f:
         data = json.load(f)
-    df, primers_with_positions = main(data)
-    # put in if statement here to deal with different data_dir formats
-    with open(data['data_dir'] + "/primers_df.csv", 'w+') as f:
-        df.to_csv(data['data_dir'] + "primers_df.csv")
-    with open(data['data_dir'] + "/primers_with_positions.csv", 'w+') as f:
-        for primer in primers_with_positions:
-            to_write = str(primer) + ":" + str(primers_with_positions[primer]) + "\n"
-            f.write(to_write)
+    main(data)
         
