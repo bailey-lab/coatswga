@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from .nn_model import create_nn_score_dt
 from pathlib import Path
 
-ROOT_DIR = Path(__file__).absolute().parent.parent.parent.parent
+DIR = Path(__file__).absolute().parent
 
 
 # ================================================================================
@@ -98,7 +98,7 @@ class PrimerDimerLike(AlignmentAlgorithm):
     
     """
     
-    param_path = f"/Users/kaleb/Desktop/Bailey_Lab/code/newswga/new_src/multiply_align/parameters.json"
+    param_path = f"{DIR}/parameters.json"
     
     def load_parameters(self):
         """
@@ -111,8 +111,8 @@ class PrimerDimerLike(AlignmentAlgorithm):
 
         # Load nearest neighbour model
         self.nn_scores = create_nn_score_dt(
-            match_json=f"/Users/kaleb/Desktop/Bailey_Lab/code/newswga/new_src/multiply_align/match.json",  # this is a path
-            single_mismatch_json=f"/Users/kaleb/Desktop/Bailey_Lab/code/newswga/new_src/multiply_align/single_mismatch.json",  # this is a path
+            match_json=f"{DIR}/match.json",  # this is a path
+            single_mismatch_json=f"{DIR}/single_mismatch.json",  # this is a path
             double_mismatch_score=params['double_mismatch_score']  # this is a float
         )
 
