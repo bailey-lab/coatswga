@@ -16,6 +16,18 @@ def main():
 
         with open(in_json, 'r') as f:
             data = json.load(f)
+        
+        if data['data_dir'][-1] == "/":
+            data['data_dir'] = data['data_dir'][:-1]
+
+        for i, pref in enumerate(data["fg_prefixes"]):
+            if pref[-1] == "/":
+                data["fg_prefixes"][i] = data["fg_prefixes"][i][:-1]
+
+        for i, pref in enumerate(data["bg_prefixes"]):
+            if pref[-1] == "/":
+                data["bg_prefixes"][i] = data["bg_prefixes"][i][:-1]
+
         if step == "find":
             find.main(data)
         elif step == "sets":
