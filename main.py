@@ -45,6 +45,18 @@ if __name__ == "__main__":
     # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/test_params.json'
     # with open(in_json, 'r') as f:
     #     data = json.load(f)
+    
+    # if data['data_dir'][-1] == "/":
+    #         data['data_dir'] = data['data_dir'][:-1]
+
+    # for i, pref in enumerate(data["fg_prefixes"]):
+    #     if pref[-1] == "/":
+    #         data["fg_prefixes"][i] = data["fg_prefixes"][i][:-1]
+
+    # for i, pref in enumerate(data["bg_prefixes"]):
+    #     if pref[-1] == "/":
+    #         data["bg_prefixes"][i] = data["bg_prefixes"][i][:-1]
+    
     # find.main(data)
     # df, primers_with_positions, rev_pos = filter.main(data)
     # sets.main(df, primers_with_positions, rev_pos, data)

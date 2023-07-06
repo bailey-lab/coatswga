@@ -103,7 +103,7 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
             if not is_dimer(primes, primer):
                 
                 tot_len = 0
-                new_inters = fwd_inters
+                new_inters = fwd_inters.copy()
                 for i, prefix in enumerate(prefixes):
                     if primer in primers_with_positions[prefix]:
                         length, intervals = bedtooler([(int(pos), min(seq_lengths[i], int(pos) + frag_length)) for pos in primers_with_positions[prefix][primer]], 
@@ -147,11 +147,11 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
             if not is_dimer(primes, rc(primer)):
 
                 tot_len = 0
-                new_inters = rev_inters
+                new_inters = rev_inters.copy()
                 for i, prefix in enumerate(prefixes):
                     if rc(primer) in rev_positions[prefix]:
-                        length, intervals = bedtooler([(max(0, int(pos) - frag_length), int(pos)) for pos in primers_with_positions[prefix][primer]], 
-                                                    rev_inters[prefix], data['data_dir'])
+                        length, intervals = bedtooler([(max(0, int(pos) + len(primer) - frag_length), int(pos) + len(primer)) for pos in primers_with_positions[prefix][primer]], 
+                                                    new_inters[prefix], data['data_dir'])
                         tot_len += length
                         new_inters[prefix] = intervals 
 
@@ -169,6 +169,7 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
         if index == len(df):
             index = 0
             coverage_change = round(coverage_change - 0.1, 2)
+            print("Coverage change factor reduced to " + str(coverage_change))
 
     print("\nFinal primers: " + str(primes))
     print("Expected forward coverage: " + str(round(fwd_coverage, 3)))
