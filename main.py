@@ -42,7 +42,7 @@ def main():
 
 if __name__ == "__main__":
     # step = "sets"
-    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
+    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/test_params.json'
     # with open(in_json, 'r') as f:
     #     data = json.load(f)
     # find.main(data)

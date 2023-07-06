@@ -117,7 +117,7 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
                     fwd_len = tot_len
                     fwd_inters = new_inters
                     for prefix in prefixes:
-                        if rc(primer) in rev_positions[prefix] and rev_positions[prefix][rc(primer)] != ['']:
+                        if rc(primer) in rev_positions[prefix] and rev_positions[prefix][rc(primer)] != []:
                             length, inters = bedtooler([(max(0, int(pos) - frag_length), int(pos)) for pos in rev_positions[prefix][rc(primer)]], rev_inters[prefix], data['data_dir'])
                             rev_len += length
                             rev_inters[prefix] = inters
@@ -163,7 +163,7 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/total_fg_length
-                    print(str(primer) + " added to set")
+                    print(str(rc(primer)) + " added to set")
                     print("Current reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1
         if index == len(df):
@@ -171,8 +171,8 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
             coverage_change = round(coverage_change - 0.1, 2)
 
     print("\nFinal primers: " + str(primes))
-    print("Expected forward coverage: " + str(fwd_coverage))
-    print("Expected reverse coverage: " + str(rev_coverage))
+    print("Expected forward coverage: " + str(round(fwd_coverage, 3)))
+    print("Expected reverse coverage: " + str(round(rev_coverage, 3)))
     print("Total foreground hits: " + str(total_fgs))
     print("Total background hits: " + str(total_bgs))
     print("Bg/fg ratio: " + str(round(total_bgs/total_fgs, 3)))
@@ -189,6 +189,8 @@ if __name__ == "__main__":
         while pair != "":
             primer = pair.split(':')[0]
             positions = pair.split(':')[1].strip('][').split(', ')
+            if positions == ['']:
+                positions = []
             prim_w_pos[primer] = positions
             pair = f.readline().strip()
     rev_w_pos = {}
