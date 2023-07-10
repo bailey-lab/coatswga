@@ -28,6 +28,11 @@ def main():
             if pref[-1] == "/":
                 data["bg_prefixes"][i] = data["bg_prefixes"][i][:-1]
 
+        print("=" * 80)
+        for elt in data:
+            print(f'{elt}: {data[elt]}')
+        print("-" * 80)
+
         if step == "find":
             find.main(data)
         elif step == "sets":
@@ -56,6 +61,11 @@ if __name__ == "__main__":
     # for i, pref in enumerate(data["bg_prefixes"]):
     #     if pref[-1] == "/":
     #         data["bg_prefixes"][i] = data["bg_prefixes"][i][:-1]
+    
+    # print("=" * 80)
+    # for elt in data:
+    #     print(f'{elt}: {data[elt]}')
+    # print("-" * 80)
     
     # # find.main(data)
     # df, primers_with_positions, rev_pos, chr_lens = filter.main(data)
