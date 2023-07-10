@@ -214,7 +214,7 @@ def make_df(primers_revs_tuples:list, primer_dict:dict, prefixes:list):
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
     sorted_df = df.sort_values(by=["ratio", "fg_count", "gini"], ascending=[True, False, True])
 
-    return df, primers_with_positions, revs_with_positions
+    return sorted_df, primers_with_positions, revs_with_positions
 
 def main(data):
     bg_total_length = sum(data['bg_seq_lengths'])

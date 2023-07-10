@@ -37,6 +37,8 @@ def bedtooler(pos_tups:list, all_inters:list, data_dir:str):
     inters = []
 
     both = pos_tups + all_inters
+    if both == [] or both == ['']:
+        return 0, []
     both.sort(key=lambda x: x[0])
     with open(data_dir + "/pos.bed", 'w') as f:
         for tup in both:
@@ -83,6 +85,8 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
     fwd_len = 0
     rev_len = 0
 
+    prim_inters = {prefix: {} for prefix in prefixes}
+
     # edits the threshold that each primer must cover a certain percent of new indices
     coverage_change = 0.9
 
@@ -103,16 +107,19 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
             if not is_dimer(primes, primer):
                 
                 tot_len = 0
+                prim_coverage = 0
                 new_inters = fwd_inters.copy()
                 for i, prefix in enumerate(prefixes):
                     if primer in primers_with_positions[prefix]:
-                        length, intervals = bedtooler([(int(pos), min(seq_lengths[i], int(pos) + frag_length)) for pos in primers_with_positions[prefix][primer]], 
-                                                new_inters[prefix], data['data_dir'])
+                        if primer not in prim_inters[prefix]:
+                            prim_inters[prefix][primer] = bedtooler([(int(pos), min(seq_lengths[i], int(pos) + frag_length)) for pos in primers_with_positions[prefix][primer]], [], data['data_dir'])
+                        length, intervals = bedtooler(prim_inters[prefix][primer][1], new_inters[prefix], data['data_dir'])
+                        prim_coverage += prim_inters[prefix][primer][0]
                         tot_len += length
                         new_inters[prefix] = intervals
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (tot_len - fwd_len) >= coverage_change * count * frag_length:
+                if (tot_len - fwd_len) >= coverage_change * prim_coverage:
                     primes.append(primer)
                     fwd_len = tot_len
                     fwd_inters = new_inters
@@ -135,7 +142,9 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
     rev_coverage = rev_len/total_fg_length
     coverage_change = 0.9
     index = 0
+    prim_inters = {prefix: {} for prefix in prefixes}
     print("Finding reverse set...")
+    print("Current reverse coverage: " + str(round(rev_coverage, 3)))
     while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
@@ -148,15 +157,18 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
 
                 tot_len = 0
                 new_inters = rev_inters.copy()
+                prim_coverage = 0
                 for i, prefix in enumerate(prefixes):
                     if rc(primer) in rev_positions[prefix]:
-                        length, intervals = bedtooler([(max(0, int(pos) + len(primer) - frag_length), int(pos) + len(primer)) for pos in primers_with_positions[prefix][primer]], 
-                                                    new_inters[prefix], data['data_dir'])
+                        if primer not in prim_inters[prefix]:
+                            prim_inters[prefix][primer] = bedtooler([(max(0, int(pos) + len(primer) - frag_length), int(pos) + len(primer)) for pos in primers_with_positions[prefix][primer]], [], data['data_dir'])
+                        length, intervals = bedtooler(prim_inters[prefix][primer][1], new_inters[prefix], data['data_dir'])
                         tot_len += length
+                        prim_coverage += prim_inters[prefix][primer][0]
                         new_inters[prefix] = intervals 
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (tot_len - rev_len) >= coverage_change * count * frag_length:
+                if (tot_len - rev_len) >= coverage_change * prim_coverage:
                     primes.append(rc(primer))
                     rev_len = tot_len
                     rev_inters = new_inters
