@@ -31,12 +31,12 @@ def main():
         if step == "find":
             find.main(data)
         elif step == "sets":
-            df, primers_with_positions, rev_pos = filter.main(data)
-            sets.main(df, primers_with_positions, rev_pos, data)
+            df, primers_with_positions, rev_pos, chr_lens = filter.main(data)
+            sets.main(df, primers_with_positions, rev_pos, chr_lens, data)
         elif step == "all":
             find.main(data)
-            df, primers_with_positions, rev_pos = filter.main(data)
-            sets.main(df, primers_with_positions, rev_pos, data)
+            df, primers_with_positions, rev_pos, chr_lens = filter.main(data)
+            sets.main(df, primers_with_positions, rev_pos, chr_lens, data)
         else:
             print("Invalid step. Input is 'find', 'sets', or 'all'.")
 
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     #     if pref[-1] == "/":
     #         data["bg_prefixes"][i] = data["bg_prefixes"][i][:-1]
     
-    # find.main(data)
-    # df, primers_with_positions, rev_pos = filter.main(data)
-    # sets.main(df, primers_with_positions, rev_pos, data)
+    # # find.main(data)
+    # df, primers_with_positions, rev_pos, chr_lens = filter.main(data)
+    # sets.main(df, primers_with_positions, rev_pos, chr_lens, data)
     main()
     

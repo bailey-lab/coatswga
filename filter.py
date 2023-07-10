@@ -6,35 +6,6 @@ import numpy as np
 import pandas as pd
 import subprocess
 
-def gini_exact(array):
-    """
-    Calculates the Gini coefficient of a numpy array. Based on bottom equation from
-    http://www.statsdirect.com/help/default.htm#nonparametric_methods/gini.htm
-    All values are treated equally, arrays must be 1d
-
-    Args:
-        array (array): One-dimensional array or list of floats or ints.
-
-    Returns:
-        gini_index: The gini index of the array given.
-    """
-    if len(array) == 0:
-        return 0
-    array = np.array(array, dtype=float)
-    if np.amin(array) < 0:
-        # Values cannot be negative:
-        array -= np.amin(array)
-    # Values cannot be 0:
-    array += 0.0000001
-    # Values must be sorted:
-    array = np.sort(array)
-    # Index per array element:
-    index = np.arange(1, array.shape[0] + 1)
-    # Number of array elements:
-    n = array.shape[0]
-    # Gini coefficient:
-    return ((np.sum((2 * index - n - 1) * array)) / (n * np.sum(array)))
-
 def rc(seq: str) -> str:
     '''
     Finds the reverse complement of the passed string
@@ -118,15 +89,15 @@ def make_tasks(mini, maxi, genomes, primer_dict, seq_lengths, prefixes):
         tasks: an array of immutables of primers of each length in the range, genome paths, and sequence lengths for each
             foreground genome.
     '''
-    print("Calculating Gini indices...")
+    print("Calculating position indices...")
     tasks = []
     # dicts = []
     for i, fg_genome in enumerate(genomes):
         for k in range(int(mini), int(maxi) + 1):
-            primers_per_k = {primer: [[]] for primer in primer_dict[prefixes[i]] if len(primer) == k}
-            reverses_per_k = {rc(primer): [] for primer in primers_per_k}
+            primers_per_k = set(primer for primer in primer_dict[prefixes[i]] if len(primer) == k)
+            reverses_per_k = set(rc(primer) for primer in primers_per_k)
             # dicts.append(get_positions((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i])))
-            if primers_per_k != {}:
+            if len(primers_per_k) > 0:
                 tasks.append((primers_per_k, reverses_per_k, k, fg_genome, seq_lengths[i], prefixes[i]))
     return tasks
 
@@ -146,12 +117,18 @@ def get_positions(task):
         get_gap_lengths(primer_dict, seq_length): dictionary mapping primers to their position indices and Gini index
     '''
     # breaks up the task
-    primer_dict, revs, k, fg_genome, seq_length, prefix = task
+    primer_set, rev_set, k, fg_genome, seq_length, prefix = task
+
+    primer_dict = {}
+    rev_dict = {}
+    lens = {}
 
     # opens the passed genome file to read
     with open(fg_genome, 'r') as f:
         index = 0
         prev = ''
+        chrom_num = 0
+        chr = "chr0"
         # iterates through each line in the file, concatenating the line before with the current line while removing any whitespace
         # so that kmers that cross lines can be counted. Searches the combined lines base by base checking if the substrings are in
         # the dictionary of possible primers, records any positions found.
@@ -159,28 +136,31 @@ def get_positions(task):
             # if line is gene header, skip
             if line[0] == ">":
                 prev = ''
+                if chrom_num != 0:
+                    lens[chr] = index + k
+                chrom_num += 1
+                chr = "chr" + str(chrom_num)
+                primer_dict[chr] = {}
+                rev_dict[chr] = {}
+                index = 0
                 continue
             # combines stripped lines
             stripped = line.strip()
             combined = ''.join([prev[len(prev)-k+1:], stripped]).upper()
             # iterates through each base checking for primers
             for i in range(len(combined)-k+1):
-                if combined[i:k+i] in primer_dict:
-                    primer_dict[combined[i:k+i]][0].append(index)
-                elif combined[i:k+i] in revs:
-                    revs[combined[i:k+i]].append(index)
+                if combined[i:k+i] in primer_set:
+                    if combined[i:k+i] not in primer_dict[chr]:
+                        primer_dict[chr][combined[i:k+i]] = []
+                    primer_dict[chr][combined[i:k+i]].append(index)
+                elif combined[i:k+i] in rev_set:
+                    if combined[i:k+i] not in rev_dict[chr]:
+                        rev_dict[chr][combined[i:k+i]] = []
+                    rev_dict[chr][combined[i:k+i]].append(index)
                 index += 1
             prev = stripped
-    # for each primer in the dictionary, calculates the gap lengths in between index positions
-    for primer in primer_dict:
-        if type(primer_dict[primer][0]) != list or primer_dict[primer] == []:
-            continue
-        positions = primer_dict[primer][0]
-        differences = [a_i - b_i for a_i, b_i in zip(positions[1:], positions[:-1])]
-        differences.append(seq_length-positions[-1])
-        differences.append(positions[0])
-        primer_dict[primer].append(gini_exact(differences))
-    return (prefix, primer_dict, revs)
+    lens[chr] = index + k
+    return (prefix, primer_dict, rev_dict, lens)
 
 def make_df(primers_revs_tuples:list, primer_dict:dict, prefixes:list):
     '''
@@ -198,23 +178,41 @@ def make_df(primers_revs_tuples:list, primer_dict:dict, prefixes:list):
             at the top of the DataFrame
         primer_with_positions: Dictionary mapping each primer to a list of its position indices.
     '''
-    primers_as_list = []
     primers_with_positions = {}
+    primers_to_fg = {}
+    primers_to_bg = {}
     revs_with_positions = {}
+    chr_lens = {}
     for prefix in prefixes:
         primers_with_positions[prefix] = {}
         revs_with_positions[prefix] = {}
+        chr_lens[prefix] = {}
+        for primer in primer_dict[prefix]:
+            if primer not in primers_to_fg:
+                primers_to_fg[primer] = 0
+                primers_to_bg[primer] = 0
+            primers_to_fg[primer] += int(primer_dict[prefix][primer][0])
+            primers_to_bg[primer] += int(primer_dict[prefix][primer][1])
     for trip in primers_revs_tuples:
-        for primer in trip[1]:
-            primers_as_list.append([primer, int(primer_dict[trip[0]][primer][0]), int(primer_dict[trip[0]][primer][1]), trip[1][primer][1]])
-            primers_with_positions[trip[0]][primer] = trip[1][primer][0]
-        for rev in trip[2]:
-            revs_with_positions[trip[0]][rev] = trip[2][rev]
-    df = pd.DataFrame(primers_as_list, columns=['primer', 'fg_count', 'bg_count', 'gini'])
+        for chr in trip[1]:
+            chr_lens[prefix][chr] = trip[3][chr]
+            if chr not in primers_with_positions[prefix]:
+                primers_with_positions[prefix][chr] = {}
+            for primer in trip[1][chr]:
+                primers_with_positions[trip[0]][chr][primer] = trip[1][chr][primer]
+        for chr in trip[2]:
+            if chr not in revs_with_positions[prefix]:
+                revs_with_positions[prefix][chr] = {}
+            for rev in trip[2][chr]:
+                revs_with_positions[trip[0]][chr][rev] = trip[2][chr][rev]
+    primers_as_list = []
+    for primer in primers_to_bg:
+        primers_as_list.append([primer, int(primers_to_fg[primer]), int(primers_to_bg[primer])])
+    df = pd.DataFrame(primers_as_list, columns=['primer', 'fg_count', 'bg_count'])
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
-    sorted_df = df.sort_values(by=["ratio", "fg_count", "gini"], ascending=[True, False, True])
+    sorted_df = df.sort_values(by=["ratio", "fg_count"], ascending=[True, False])
 
-    return sorted_df, primers_with_positions, revs_with_positions
+    return sorted_df, primers_with_positions, revs_with_positions, chr_lens
 
 def main(data):
     bg_total_length = sum(data['bg_seq_lengths'])
@@ -240,27 +238,31 @@ def main(data):
     pool = multiprocessing.Pool(processes=int(data['cpus']))
     primers_revs_tuples = pool.map(get_positions, tasks)
 
-    df, primers_with_positions, revs_with_positions = make_df(primers_revs_tuples, primer_dict, data['fg_prefixes'])
+    df, primers_with_positions, revs_with_positions, chr_lens = make_df(primers_revs_tuples, primer_dict, data['fg_prefixes'])
 
     if data["write"]:
         df.to_csv(data['data_dir'] + "/primers_df.csv")
-        for i, prefix in enumerate(data['fg_prefixes']):
-            name = prefix.split('/')[-1]
-            if len(primers_with_positions[prefix]) > 0:
-                with open(data['data_dir'] + "/" + name + "_primers_with_positions.csv", 'w+') as f:
-                    for primer in primers_with_positions[prefix]:
-                        to_write = str(primer) + ":" + str(primers_with_positions[prefix][primer]) + "\n"
-                        f.write(to_write)
-                with open(data['data_dir'] + "/" + name + "_reverses_with_positions.csv", 'w+') as f:
-                    for primer in revs_with_positions[prefix]:
-                        to_write = str(primer) + ":" + str(revs_with_positions[prefix][primer]) + "\n"
-                        f.write(to_write)
+        # for i, prefix in enumerate(data['fg_prefixes']):
+        #     name = prefix.split('/')[-1]
+        #     if len(primers_with_positions[prefix]) > 0:
+        #         with open(data['data_dir'] + "/" + name + "_primers_with_positions.csv", 'w+') as f:
+        #             for chr in primers_with_positions[prefix]:
+        #                 f.write(">" + str(chr) + "\n")
+        #                 for primer in primers_with_positions[prefix][chr]:
+        #                     to_write = str(primer) + ":" + str(primers_with_positions[prefix][chr][primer]) + "\n"
+        #                     f.write(to_write)
+        #         with open(data['data_dir'] + "/" + name + "_reverses_with_positions.csv", 'w+') as f:
+        #             for chr in revs_with_positions[prefix]:
+        #                 f.write(">" + str(chr) + "\n")
+        #                 for primer in revs_with_positions[prefix][chr]:
+        #                     to_write = str(primer) + ":" + str(revs_with_positions[prefix][chr][primer]) + "\n"
+        #                     f.write(to_write)
 
-    return df, primers_with_positions, revs_with_positions
+    return df, primers_with_positions, revs_with_positions, chr_lens
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]
-    in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
+    in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/params/test_params.json'
     with open(in_json, 'r') as f:
         data = json.load(f)
     main(data)

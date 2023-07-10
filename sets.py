@@ -32,29 +32,38 @@ def is_dimer(primers:list, primer_to_check:str) -> bool:
             return True
     return False
 
-def bedtooler(pos_tups:list, all_inters:list, data_dir:str):
-    length = 0
-    inters = []
-
-    both = pos_tups + all_inters
-    if both == [] or both == ['']:
-        return 0, []
-    both.sort(key=lambda x: x[0])
+def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
+    both = {}
+    for chr in pos_inters:
+        if chr in all_inters:
+            both[chr] = pos_inters[chr] + all_inters[chr]
+        else:
+            both[chr] = pos_inters[chr]
+        both[chr].sort(key=lambda x: x[0])
+    if both == {}:
+        return 0, {}
     with open(data_dir + "/pos.bed", 'w') as f:
-        for tup in both:
-            f.write("chr1\t" + str(tup[0]) + "\t" + str(tup[1]) + "\n")
+        for chr in both:
+            for tup in both[chr]:
+                f.write(chr + "\t" + str(tup[0]) + "\t" + str(tup[1]) + "\n")
+
+    length = 0
+    inters = {}
+
     # outer = subprocess.run(['bedtools', 'merge', '-i', data_dir + "/pos.bed"], capture_output=True)
     out = subprocess.check_output(['bedtools', 'merge', '-i', data_dir + "/pos.bed"]).decode().strip().split('\n')
     for line in out:
         parts = line.split('\t')
         chr = parts[0]
+        if chr not in inters:
+            inters[chr] = []
         start = int(parts[1])
         end = int(parts[2])
-        inters.append((start,end))
+        inters[chr].append((start,end))
         length += end - start
     return length, inters
 
-def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
+def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict, data):
     """
     Finds a set of primers with the highest specificity that theoretically meets the target_coverage value specified in the JSON file. 
     Primers in the set should not form self dimers or primer-primer dimers within the set. Does this by treating each base in the
@@ -70,22 +79,27 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
             hits of that primer on the fg genome
         data: A JSON object containing hyperparameters
     """
+    total_fg_length = sum(data['fg_seq_lengths'])
+    frag_length = data["fragment_length"]
+    prefixes = data['fg_prefixes']
 
     # indices of rows get scrambled when sorting by ratio, have to reset indices to iterate through in order
     df = df.reset_index(drop=True)
 
-    total_fg_length = sum(data['fg_seq_lengths'])
-    frag_length = data["fragment_length"]
-    seq_lengths = data['fg_seq_lengths']
-    prefixes = data['fg_prefixes']
 
     # set to hold the covered indices
-    fwd_inters = {prefix: [] for prefix in prefixes}
-    rev_inters = {prefix: [] for prefix in prefixes}
+    fwd_inters = {}
+    rev_inters = {}
+    prim_inters = {}
+    for prefix in prefixes:
+        rev_inters[prefix] = {}
+        fwd_inters[prefix] = {}
+        prim_inters[prefix] = {}
+        for chr in chr_lens[prefix]:
+            rev_inters[prefix][chr] = []
+            fwd_inters[prefix][chr] = []
     fwd_len = 0
     rev_len = 0
-
-    prim_inters = {prefix: {} for prefix in prefixes}
 
     # edits the threshold that each primer must cover a certain percent of new indices
     coverage_change = 0.9
@@ -107,27 +121,36 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
             if not is_dimer(primes, primer):
                 
                 tot_len = 0
-                prim_coverage = 0
+                prim_coverage_len = 0
                 new_inters = fwd_inters.copy()
-                for i, prefix in enumerate(prefixes):
-                    if primer in primers_with_positions[prefix]:
-                        if primer not in prim_inters[prefix]:
-                            prim_inters[prefix][primer] = bedtooler([(int(pos), min(seq_lengths[i], int(pos) + frag_length)) for pos in primers_with_positions[prefix][primer]], [], data['data_dir'])
-                        length, intervals = bedtooler(prim_inters[prefix][primer][1], new_inters[prefix], data['data_dir'])
-                        prim_coverage += prim_inters[prefix][primer][0]
-                        tot_len += length
-                        new_inters[prefix] = intervals
+                for prefix in prefixes:
+                    # if primer in primers_with_positions[prefix]:
+                    if primer not in prim_inters[prefix]:
+                        prim_dict = {}
+                        for chr in primers_with_positions[prefix]:
+                            if primer in primers_with_positions[prefix][chr]:
+                                prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + frag_length)) for pos in primers_with_positions[prefix][chr][primer]]
+                        prim_inters[prefix][primer] = bedtooler(prim_dict, {}, data['data_dir'])
+                    length, intervals = bedtooler(prim_inters[prefix][primer][1], new_inters[prefix], data['data_dir'])
+                    prim_coverage_len += prim_inters[prefix][primer][0]
+                    tot_len += length
+                    new_inters[prefix] = intervals
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (tot_len - fwd_len) >= coverage_change * prim_coverage:
+                if (tot_len - fwd_len) >= coverage_change * prim_coverage_len:
                     primes.append(primer)
                     fwd_len = tot_len
-                    fwd_inters = new_inters
+                    fwd_inters = new_inters.copy()
+                    rev_len = 0
+                    rev = rc(primer)
                     for prefix in prefixes:
-                        if rc(primer) in rev_positions[prefix] and rev_positions[prefix][rc(primer)] != []:
-                            length, inters = bedtooler([(max(0, int(pos) - frag_length), int(pos)) for pos in rev_positions[prefix][rc(primer)]], rev_inters[prefix], data['data_dir'])
-                            rev_len += length
-                            rev_inters[prefix] = inters
+                        prim_dict = {}
+                        for chr in rev_positions[prefix]:
+                            if rev in rev_positions[prefix][chr]:
+                                prim_dict[chr] = [(max(0, int(pos) + len(rev) - frag_length), int(pos) + len(rev)) for pos in rev_positions[prefix][chr][rev]]
+                        length, inters = bedtooler(prim_dict, rev_inters[prefix], data['data_dir'])
+                        rev_len += length
+                        rev_inters[prefix] = inters
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     fwd_coverage = fwd_len/total_fg_length
@@ -149,33 +172,38 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, data):
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
+        rev = rc(primer)
 
         # checks if primer forms a self dimer, is a substring of a primer already in the set, or forms a 
         # primer-primer dimer with any primers already in the set
-        if rc(primer) not in primes:
-            if not is_dimer(primes, rc(primer)):
+        if rev not in primes:
+            if not is_dimer(primes, rev):
 
                 tot_len = 0
                 new_inters = rev_inters.copy()
-                prim_coverage = 0
-                for i, prefix in enumerate(prefixes):
-                    if rc(primer) in rev_positions[prefix]:
-                        if primer not in prim_inters[prefix]:
-                            prim_inters[prefix][primer] = bedtooler([(max(0, int(pos) + len(primer) - frag_length), int(pos) + len(primer)) for pos in primers_with_positions[prefix][primer]], [], data['data_dir'])
-                        length, intervals = bedtooler(prim_inters[prefix][primer][1], new_inters[prefix], data['data_dir'])
-                        tot_len += length
-                        prim_coverage += prim_inters[prefix][primer][0]
-                        new_inters[prefix] = intervals 
+                prim_coverage_len = 0
+                for prefix in prefixes:
+                    if rev not in prim_inters[prefix]:
+                        prim_dict = {}
+                        for chr in primers_with_positions[prefix]:
+                            if primer in primers_with_positions[prefix][chr]:
+                                prim_dict[chr] = [(max(0, int(pos) + len(primer) - frag_length), int(pos) + len(primer)) for pos in primers_with_positions[prefix][chr][primer]]
+                        prim_inters[prefix][rev] = bedtooler(prim_dict, {}, data['data_dir'])
+                    prim_coverage_len += prim_inters[prefix][rev][0]
+
+                    length, intervals = bedtooler(prim_inters[prefix][rev][1], new_inters[prefix], data['data_dir'])
+                    tot_len += length
+                    new_inters[prefix] = intervals 
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (tot_len - rev_len) >= coverage_change * prim_coverage:
-                    primes.append(rc(primer))
+                if (tot_len - rev_len) >= coverage_change * prim_coverage_len:
+                    primes.append(rev)
                     rev_len = tot_len
-                    rev_inters = new_inters
+                    rev_inters = new_inters.copy()
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/total_fg_length
-                    print(str(rc(primer)) + " added to set")
+                    print(str(rev) + " added to set")
                     print("Current reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1
         if index == len(df):
