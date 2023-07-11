@@ -5,6 +5,8 @@ from numba import njit
 from multiply_align.algorithms import PrimerDimerLike
 from filter import rc
 import subprocess
+import multiprocessing
+import os
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:
     '''
@@ -61,8 +63,9 @@ def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
     # if empty return early
     if both == {}:
         return 0, {}
-    # open the intermediate file pos.bed
-    with open(data_dir + "/pos.bed", 'w') as f:
+    # open the intermediate file pos[pid].bed
+    pid = os.getpid()
+    with open(f"{data_dir}/pos{pid}.bed", 'w') as f:
         # iterate through each chromosome in the combined dictionary, writing each range to the file
         for chr in both:
             for tup in both[chr]:
@@ -74,7 +77,7 @@ def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
 
     # outer = subprocess.run(['bedtools', 'merge', '-i', data_dir + "/pos.bed"], capture_output=True)
     # get output from bedtools, decode, strip, and split by line
-    out = subprocess.check_output(['bedtools', 'merge', '-i', data_dir + "/pos.bed"]).decode().strip().split('\n')
+    out = subprocess.check_output(['bedtools', 'merge', '-i', f"{data_dir}/pos{pid}.bed"]).decode().strip().split('\n')
     # iterates through each line
     for line in out:
         # bedtools output is tab deliminated, so split on each tab
@@ -91,7 +94,7 @@ def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
         length += end - start
     return length, inters
 
-def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict, data):
+def setter(task):
     """
     Finds a set of primers with the highest specificity that theoretically meets the target_coverage value specified in the JSON file. 
     Primers in the set should not form self dimers or primer-primer dimers within the set. Does this by treating each base in the
@@ -100,15 +103,21 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict
     percent of new indices covered surpasses a threshold determined by coverage_change.
 
     Args:
-        df: Pandas DataFrame with all the primers that passed the filter, their foreground hits, background hits, and bg/fg ratio. The dataframe 
-            is sorted first on bg/fg ratio (low to high to get best specificity) then by fg count (high to low to get highest frequency).
-        primers_with_postions: A dictionary mapping chromosome number to a dictionary containing all the primers that passed the filter mapped to
-                                a list of the indices of all the hits of that primer on the fg genome
-        rev_positions: A dictionary mapping chromosome number to a dictionary containing all the reverse complements of primers that passed the filter 
-                        mapped to a list of the indices of all the hits of that primer on the fg genome
-        chr_lens: Dictionary mapping chromosome number to its length
-        data: A JSON object containing hyperparameters
+        task:
+            primer: the primer to start with
+            index: the index of the first primer in the dataframe
+            df: Pandas DataFrame with all the primers that passed the filter, their foreground hits, background hits, and bg/fg ratio. The dataframe 
+                is sorted first on bg/fg ratio (low to high to get best specificity) then by fg count (high to low to get highest frequency).
+            primers_with_postions: A dictionary mapping chromosome number to a dictionary containing all the primers that passed the filter mapped to
+                                    a list of the indices of all the hits of that primer on the fg genome
+            rev_positions: A dictionary mapping chromosome number to a dictionary containing all the reverse complements of primers that passed the filter 
+                            mapped to a list of the indices of all the hits of that primer on the fg genome
+            chr_lens: Dictionary mapping chromosome number to its length
+            data: A JSON object containing hyperparameters
     """
+
+    primer, index, df, primers_with_positions, rev_positions, chr_lens, data = task
+
     # gets total foreground length
     total_fg_length = 0
     for prefix in chr_lens:
@@ -119,26 +128,13 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict
     frag_length = data["fragment_length"]
     prefixes = data['fg_prefixes']
 
-    # indices of rows get scrambled when sorting by ratio, have to reset indices to iterate through in order
-    df = df.reset_index(drop=True)
-
-
     # dictionaries to hold intervals of covered indices in the forward and reverse directions
     fwd_inters = {}
     rev_inters = {}
 
     # dictionary to hold intervals of covered indices for each primer, speeds up program so the intervals don't have to be
     # recalculated every time the primer is checked
-    prim_inters = {}
-
-    # intialize dictionaries
-    for prefix in prefixes:
-        rev_inters[prefix] = {}
-        fwd_inters[prefix] = {}
-        prim_inters[prefix] = {}
-        for chr in chr_lens[prefix]:
-            rev_inters[prefix][chr] = []
-            fwd_inters[prefix][chr] = []
+    prim_inters = {prefix:{} for prefix in prefixes}
 
     # initialzie lengths of covered indices in each direction
     fwd_len = 0
@@ -147,12 +143,31 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict
     # edits the threshold that each primer must cover a certain percent of new indices
     coverage_change = 0.9
 
-    primes = []
-    fwd_coverage = 0
-    index = 0
-    total_fgs = 0
-    total_bgs = 0
-    print("Finding forward set...")
+    primes = [primer]
+
+    for prefix in prefixes:
+        prim_dict = {}
+        for chr in primers_with_positions[prefix]:
+            if primer in primers_with_positions[prefix][chr]:
+                prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + frag_length)) for pos in primers_with_positions[prefix][chr][primer]]
+        prim_inters[prefix][primer] = bedtooler(prim_dict, {}, data['data_dir'])
+        fwd_len += prim_inters[prefix][primer][0]
+        fwd_inters[prefix] = prim_inters[prefix][primer][1]
+
+    rev = rc(primer)
+    for prefix in prefixes:
+        prim_dict = {}
+        for chr in rev_positions[prefix]:
+            if rev in rev_positions[prefix][chr]:
+                prim_dict[chr] = [(max(0, int(pos) + len(rev) - frag_length), int(pos) + len(rev)) for pos in rev_positions[prefix][chr][rev]]
+        length, inters = bedtooler(prim_dict, {}, data['data_dir'])
+        rev_len += length
+        rev_inters[prefix] = inters
+
+    fwd_coverage = fwd_len / total_fg_length
+    total_fgs = df['fg_count'][index]
+    total_bgs = df['bg_count'][index]
+    # print("Finding forward set...")
     while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
@@ -204,20 +219,20 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     fwd_coverage = fwd_len/total_fg_length
-                    print(str(primer) + " added to set")
-                    print("Current forward coverage: " + str(round(fwd_coverage, 3)))
+                    # print(str(primer) + " added to set")
+                    # print("Current forward coverage: " + str(round(fwd_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
             coverage_change = round(coverage_change - 0.1, 2)
-            print("Coverage change factor reduced to " + str(coverage_change))
+            # print("Coverage change factor reduced to " + str(coverage_change))
     
     rev_coverage = rev_len/total_fg_length
     coverage_change = 0.9
     index = 0
     prim_inters = {prefix: {} for prefix in prefixes}
-    print("Finding reverse set...")
-    print("Current reverse coverage: " + str(round(rev_coverage, 3)))
+    # print("Finding reverse set...")
+    # print("Current reverse coverage: " + str(round(rev_coverage, 3)))
     while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
@@ -253,20 +268,128 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/total_fg_length
-                    print(str(rev) + " added to set")
-                    print("Current reverse coverage: " + str(round(rev_coverage, 3)))
+                    # print(str(rev) + " added to set")
+                    # print("Current reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
             coverage_change = round(coverage_change - 0.1, 2)
-            print("Coverage change factor reduced to " + str(coverage_change))
+            # print("Coverage change factor reduced to " + str(coverage_change))
 
-    print("\nFinal primers: " + str(primes))
-    print("Expected forward coverage: " + str(round(fwd_coverage, 3)))
-    print("Expected reverse coverage: " + str(round(rev_coverage, 3)))
-    print("Total foreground hits: " + str(total_fgs))
-    print("Total background hits: " + str(total_bgs))
-    print("Bg/fg ratio: " + str(round(total_bgs/total_fgs, 3)))
+    os.remove(f"{data['data_dir']}/pos{os.getpid()}.bed")
+
+    return (primes, fwd_coverage, rev_coverage, total_fgs, total_bgs, total_bgs/total_fgs)
+
+def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict, data):
+    print("Finding sets...")
+    # indices of rows get scrambled when sorting by ratio, have to reset indices to iterate through in order
+    df = df.reset_index(drop=True)
+
+    if data['cpus'] == 1:
+        setter((df['primer'][0], 0, df, primers_with_positions, rev_positions, chr_lens, data))
+    else: 
+        tasks = []
+        for i in range(data['cpus']):
+            tasks.append((df['primer'][i], i, df, primers_with_positions, rev_positions, chr_lens, data))
+        pool = multiprocessing.Pool(processes=data['cpus'])
+        out = pool.map(setter, tasks)
+        fewest = 0
+        count = len(out[0][0])
+        best_coverage = 0
+        coverage = (out[0][1] + out[0][2])/2
+        lowest_ratio = 0
+        ratio = out[0][5]
+        for i in range(1, len(out)):
+            if len(out[i][0]) < count:
+                fewest = i
+                count = len(out[i][0])
+            elif len(out[i][0]) == count and out[i][5] < out[fewest][5]:
+                fewest = i
+            
+            if (out[i][1] + out[i][2])/2 > coverage:
+                best_coverage = i
+                coverage = (out[i][1] + out[i][2])/2
+            elif (out[i][1] + out[i][2])/2 == coverage and out[i][5] < out[best_coverage][5]:
+                best_coverage = i
+            
+            if out[i][5] < ratio:
+                lowest_ratio = i
+                ratio = out[i][5]
+            elif out[i][5] == ratio and (out[i][1] + out[i][2])/2 > (out[lowest_ratio][1] + out[lowest_ratio][2])/2:
+                lowest_ratio = i
+    
+        if fewest == best_coverage:
+            print("\nSet with highest coverage and fewest primers: ")
+            print(str(out[fewest][0]))
+            print("Expected forward coverage: " + str(round(out[fewest][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[fewest][2], 3)))
+            print("Total foreground hits: " + str(out[fewest][3]))
+            print("Total background hits: " + str(out[fewest][4]))
+            print("Bg/fg ratio: " + str(round(out[fewest][5], 3)))
+
+            print("\nSet with lowest ratio: ")
+            print(str(out[lowest_ratio][0]))
+            print("Expected forward coverage: " + str(round(out[lowest_ratio][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[lowest_ratio][2], 3)))
+            print("Total foreground hits: " + str(out[lowest_ratio][3]))
+            print("Total background hits: " + str(out[lowest_ratio][4]))
+            print("Bg/fg ratio: " + str(round(out[lowest_ratio][5], 3)) + "\n")
+        elif fewest == lowest_ratio:
+            print("\nSet with lowest ratio and fewest primers: ")
+            print(str(out[fewest][0]))
+            print("Expected forward coverage: " + str(round(out[fewest][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[fewest][2], 3)))
+            print("Total foreground hits: " + str(out[fewest][3]))
+            print("Total background hits: " + str(out[fewest][4]))
+            print("Bg/fg ratio: " + str(round(out[fewest][5], 3)))
+
+            print("\nSet with highest coverage: ")
+            print(str(out[best_coverage][0]))
+            print("Expected forward coverage: " + str(round(out[best_coverage][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[best_coverage][2], 3)))
+            print("Total foreground hits: " + str(out[best_coverage][3]))
+            print("Total background hits: " + str(out[best_coverage][4]))
+            print("Bg/fg ratio: " + str(round(out[best_coverage][5], 3)) + "\n")
+        elif best_coverage == lowest_ratio:
+            print("\nSet with lowest ratio and highest coverage: ")
+            print(str(out[lowest_ratio][0]))
+            print("Expected forward coverage: " + str(round(out[lowest_ratio][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[lowest_ratio][2], 3)))
+            print("Total foreground hits: " + str(out[lowest_ratio][3]))
+            print("Total background hits: " + str(out[lowest_ratio][4]))
+            print("Bg/fg ratio: " + str(round(out[lowest_ratio][5], 3)))
+
+            print("\nSet with fewest primers: ")
+            print(str(out[fewest][0]))
+            print("Expected forward coverage: " + str(round(out[fewest][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[fewest][2], 3)))
+            print("Total foreground hits: " + str(out[fewest][3]))
+            print("Total background hits: " + str(out[fewest][4]))
+            print("Bg/fg ratio: " + str(round(out[fewest][5], 3)) + "\n")
+        else:
+            print("\nSet with fewest primers: ")
+            print(str(out[fewest][0]))
+            print("Expected forward coverage: " + str(round(out[fewest][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[fewest][2], 3)))
+            print("Total foreground hits: " + str(out[fewest][3]))
+            print("Total background hits: " + str(out[fewest][4]))
+            print("Bg/fg ratio: " + str(round(out[fewest][5], 3)))
+
+            print("\nSet with lowest ratio: ")
+            print(str(out[lowest_ratio][0]))
+            print("Expected forward coverage: " + str(round(out[lowest_ratio][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[lowest_ratio][2], 3)))
+            print("Total foreground hits: " + str(out[lowest_ratio][3]))
+            print("Total background hits: " + str(out[lowest_ratio][4]))
+            print("Bg/fg ratio: " + str(round(out[lowest_ratio][5], 3)))
+
+            print("\nSet with highest coverage: ")
+            print(str(out[best_coverage][0]))
+            print("Expected forward coverage: " + str(round(out[best_coverage][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[best_coverage][2], 3)))
+            print("Total foreground hits: " + str(out[best_coverage][3]))
+            print("Total background hits: " + str(out[best_coverage][4]))
+            print("Bg/fg ratio: " + str(round(out[best_coverage][5], 3)) + "\n")
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]
