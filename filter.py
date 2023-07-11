@@ -5,6 +5,7 @@ import melting
 import numpy as np
 import pandas as pd
 import subprocess
+from collections import defaultdict
 
 def rc(seq: str) -> str:
     '''
@@ -146,8 +147,8 @@ def get_positions(task):
                     lens[chr] = index + k
                 chrom_num += 1
                 chr = "chr" + str(chrom_num)
-                primer_dict[chr] = {}
-                rev_dict[chr] = {}
+                primer_dict[chr] = defaultdict(list)
+                rev_dict[chr] = defaultdict(list)
                 index = 0
                 continue
             # combines lines without whitespace
@@ -155,14 +156,11 @@ def get_positions(task):
             combined = ''.join([prev[len(prev)-k+1:], stripped]).upper()
             # iterates through each base checking for primers and reverse complements
             for i in range(len(combined)-k+1):
-                if combined[i:k+i] in primer_set:
-                    if combined[i:k+i] not in primer_dict[chr]:
-                        primer_dict[chr][combined[i:k+i]] = []
-                    primer_dict[chr][combined[i:k+i]].append(index)
-                elif combined[i:k+i] in rev_set:
-                    if combined[i:k+i] not in rev_dict[chr]:
-                        rev_dict[chr][combined[i:k+i]] = []
-                    rev_dict[chr][combined[i:k+i]].append(index)
+                prim = combined[i:k+i]
+                if prim in primer_set:
+                    primer_dict[chr][prim].append(index)
+                elif prim in rev_set:
+                    rev_dict[chr][prim].append(index)
                 index += 1
             prev = stripped
     # adds length of last chromosome 
