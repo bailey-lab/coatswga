@@ -5,7 +5,6 @@ import melting
 import numpy as np
 import pandas as pd
 import subprocess
-from collections import defaultdict
 from time import perf_counter as pc
 
 def rc(seq: str) -> str:
@@ -80,33 +79,6 @@ def filter_primers_into_dict(task):
                         primer_set.add(rc(kmer))
     return (prefix, primer_dict, primer_set, k)
 
-def make_tasks(mini, maxi, genomes, primer_dict, prefixes):
-    '''
-    Initalizes the tasks array so the position calculation process can be multithreaded
-
-    Args:
-        mini: Lower bound on primer length
-        maxi: Upper bound on primer length
-        genomes: List of foreground genomes to search
-        primer_dict: Dictionary containing all of the primers that passed the filters mapping to foreground and background counts
-        prefixes: List of prefixes corresponding to each foreground genome
-
-    Returns:
-        tasks: an array of immutables where each one contains a set of primers of each length in the range, a set of reverse complements of those primers, genome paths, and sequence lengths for each
-            foreground genome.
-    '''
-    print("Calculating position indices...")
-    tasks = []
-    # dicts = []
-    for i, fg_genome in enumerate(genomes):
-        for k in range(int(mini), int(maxi) + 1):
-            primers_per_k = set(primer for primer in primer_dict[prefixes[i]] if len(primer) == k)
-            reverses_per_k = set(rc(primer) for primer in primers_per_k)
-            # dicts.append(get_positions((primers_per_k, k, data['fg_genomes'][i], data['fg_seq_lengths'][i])))
-            if len(primers_per_k) > 0:
-                tasks.append((primers_per_k, reverses_per_k, k, fg_genome, prefixes[i]))
-    return tasks
-
 def get_positions(task):
     '''
     Reads through the foreground genome and records the indices at which each primer and its reverse complement occurs
@@ -124,7 +96,7 @@ def get_positions(task):
             primer_dict: Dictionary of primers of length k mapping to a list of positions where that primer is found in each chromosome for the given genome
             lens: Dicitonary mapping chromosome numbers to their lengths
     '''
-    t0 = pc()
+    # t0 = pc()
     # breaks up the task
     primer_set, k, genome, prefix = task
     # initialize variables to hold sequence 
@@ -152,7 +124,7 @@ def get_positions(task):
                 if kmer not in kmer_dict[chrom]:
                     kmer_dict[chrom][kmer] = []
                 kmer_dict[chrom][kmer].append(index)
-    print(f"{len(primer_set)} {k}mers found in {pc() - t0}")
+    # print(f"{len(primer_set)} {k}mers found in {pc() - t0}")
     return (prefix, kmer_dict, lens)
 
 def make_df(immut_list:list, primer_dict:dict, prefixes:list):
@@ -240,7 +212,8 @@ def main(data):
     print(str(num_primes) + " primers left after filtering")
     
     t1 = pc()
-    print("Time to filter primers: " + str(round(t1 - t0, 4)))
+    if data['verbose']:
+        print("Time to filter primers: " + str(round(t1 - t0, 4)))
 
     print("Calculating position indices...")
     ta = pc()
@@ -253,7 +226,8 @@ def main(data):
                     tasks.append((primer_sets[prefix][k], k, fg_genome, data['fg_prefixes'][i]))
     immut_list = pool.map(get_positions, tasks)
     tb = pc()
-    print("Time to get all positions:", str(round(tb - ta, 4)))
+    if data['verbose']:
+        print("Time to get all positions:", str(round(tb - ta, 4)))
 
     df, primers_with_positions, chr_lens = make_df(immut_list, primer_dict, data['fg_prefixes'])
 
@@ -277,9 +251,3 @@ if __name__ == "__main__":
     with open(in_json, 'r') as f:
         data = json.load(f)
     df, primers_with_positions, chr_lens = main(data)
-    # for pref in primers_with_positions:
-    #     for chr in primers_with_positions[pref]:
-    #         print(chr)
-    #         for key in primers_with_positions[pref][chr]:
-    #             print(key + ":", primers_with_positions[pref][chr][key])
-        

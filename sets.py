@@ -115,6 +115,8 @@ def setter(task):
 
     primer, index, df, primers_with_positions, chr_lens, data = task
 
+    pid = os.getpid()
+
     # gets total foreground length
     total_fg_length = 0
     for prefix in chr_lens:
@@ -164,7 +166,6 @@ def setter(task):
     fwd_coverage = fwd_len / total_fg_length
     total_fgs = df['fg_count'][index]
     total_bgs = df['bg_count'][index]
-    # print("Finding forward set...")
     while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
@@ -216,20 +217,20 @@ def setter(task):
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     fwd_coverage = fwd_len/total_fg_length
-                    # print(str(primer) + " added to set")
-                    # print("Current forward coverage: " + str(round(fwd_coverage, 3)))
+                    if data['verbose']:
+                        print(f"{pid} added  {primer} to set")
+                        print(f"{pid} forward coverage: " + str(round(fwd_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
             coverage_change = round(coverage_change - 0.1, 2)
-            # print("Coverage change factor reduced to " + str(coverage_change))
+            if data['verbose']:
+                print(f"{pid} coverage factor to {coverage_change}")
     
     rev_coverage = rev_len/total_fg_length
     coverage_change = 0.9
     index = 0
     prim_inters = {prefix: {} for prefix in prefixes}
-    # print("Finding reverse set...")
-    # print("Current reverse coverage: " + str(round(rev_coverage, 3)))
     while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
@@ -265,15 +266,17 @@ def setter(task):
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/total_fg_length
-                    # print(str(rev) + " added to set")
-                    # print("Current reverse coverage: " + str(round(rev_coverage, 3)))
+                    if data['verbose']:
+                        print(f"{pid} added  {primer} to set")
+                        print(f"{pid} reverse coverage: " + str(round(fwd_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
             coverage_change = round(coverage_change - 0.1, 2)
-            # print("Coverage change factor reduced to " + str(coverage_change))
+            if data['verbose']:
+                print(f"{pid} coverage factor to {coverage_change}")
 
-    os.remove(f"{data['data_dir']}/pos{os.getpid()}.bed")
+    os.remove(f"{data['data_dir']}/pos{pid}.bed")
 
     return (primes, fwd_coverage, rev_coverage, total_fgs, total_bgs, total_bgs/total_fgs)
 
