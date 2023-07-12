@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import subprocess
 from collections import defaultdict
+from time import perf_counter as pc
 
 def rc(seq: str) -> str:
     '''
@@ -50,6 +51,7 @@ def filter_primers_into_dict(task):
             primer_dict: Dictionary mapping the primers that pass the filters to a list containing amount of foreground and background hits
     '''
     prefix, k, data, bg_total_length = task
+    primer_set = set()
     primer_dict = {}
     max_freq = 1/data['fragment_length']
     # for each prefix, iterate through each kmer length to search in the jellyfish files
@@ -74,7 +76,9 @@ def filter_primers_into_dict(task):
                     # final check if background frequency is below threshold, add to the primer dict if yes
                     if bg_count/bg_total_length < max_freq:
                         primer_dict[kmer] = [fg_count, bg_count]
-    return (prefix, primer_dict)
+                        primer_set.add(kmer)
+                        primer_set.add(rc(kmer))
+    return (prefix, primer_dict, primer_set, k)
 
 def make_tasks(mini, maxi, genomes, primer_dict, prefixes):
     '''
@@ -109,63 +113,47 @@ def get_positions(task):
 
     Args:
         task:
-            primer_set: Set containing all primers of length k
-            rev_set: Set containing all reverse complements of primer_set
+            primer_set: Set containing all primers and reverse complements of length k
             k: Length of the primers given
-            fg_genome: File path of the genome to read
+            genome: File path of the genome to read
             prefix: Prefix of the foreground genome, used to ID the immutable 
 
     Returns:
         immutable:
             prefix: Prefix of the foreground genome, used to ID the immutable 
             primer_dict: Dictionary of primers of length k mapping to a list of positions where that primer is found in each chromosome for the given genome
-            rev_dict: Dictionary of reverse complements of the primers mapping to a list of positions where they can be found
             lens: Dicitonary mapping chromosome numbers to their lengths
     '''
+    t0 = pc()
     # breaks up the task
-    primer_set, rev_set, k, fg_genome, prefix = task
+    primer_set, k, genome, prefix = task
+    # initialize variables to hold sequence 
+    seq, name_list, seq_list, = '', [], []
+    for line in open(genome):
+        line=line.strip()
+        if '>' in line:
+            name_list.append(line[1:])
+            if len(seq)>0:
+                seq_list.append(seq)
+                seq=''
+        else:
+            seq=seq+line.upper()
+    seq_list.append(seq)
+    genome_list = [[name, seq_list[name_number]] for name_number, name in enumerate(name_list)]
 
-    # initializes the dictionaries to store the primers mapped to their positions along with the dictionary to hold the chromosome lengths
-    primer_dict = {}
-    rev_dict = {}
+    kmer_dict = {}
     lens = {}
-
-    # opens the passed genome file to read
-    with open(fg_genome, 'r') as f:
-        index = 0
-        prev = ''
-        chrom_num = 0
-        chr = "chr0"
-        # iterates through each line in the file, concatenating the line before with the current line while removing any whitespace
-        # so that kmers that cross lines can be counted. Searches the combined lines base by base checking if the substrings are in
-        # the dictionary of possible primers, records any positions found.
-        for line in f:
-            # if line is chromosome header, increment chromosome number, record length of previous chromosome, intialize new dictionary to fill for that chromosome
-            if line[0] == ">":
-                prev = ''
-                if chrom_num != 0:
-                    lens[chr] = index + k
-                chrom_num += 1
-                chr = "chr" + str(chrom_num)
-                primer_dict[chr] = defaultdict(list)
-                rev_dict[chr] = defaultdict(list)
-                index = 0
-                continue
-            # combines lines without whitespace
-            stripped = line.strip()
-            combined = ''.join([prev[len(prev)-k+1:], stripped]).upper()
-            # iterates through each base checking for primers and reverse complements
-            for i in range(len(combined)-k+1):
-                prim = combined[i:k+i]
-                if prim in primer_set:
-                    primer_dict[chr][prim].append(index)
-                elif prim in rev_set:
-                    rev_dict[chr][prim].append(index)
-                index += 1
-            prev = stripped
-    # adds length of last chromosome 
-    lens[chr] = index + k
-    return (prefix, primer_dict, rev_dict, lens)
+    for chrom, seq in genome_list:
+        kmer_dict[chrom] = {}
+        lens[chrom] = len(seq)
+        for index in range(len(seq)-k+1):
+            kmer = seq[index:index+k]
+            if kmer in primer_set:
+                if kmer not in kmer_dict[chrom]:
+                    kmer_dict[chrom][kmer] = []
+                kmer_dict[chrom][kmer].append(index)
+    print(f"{len(primer_set)} {k}mers found in {pc() - t0}")
+    return (prefix, kmer_dict, lens)
 
 def make_df(immut_list:list, primer_dict:dict, prefixes:list):
     '''
@@ -188,11 +176,9 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
     primers_with_positions = {}
     primers_to_fg = {}
     primers_to_bg = {}
-    revs_with_positions = {}
     chr_lens = {}
     for prefix in prefixes:
         primers_with_positions[prefix] = {}
-        revs_with_positions[prefix] = {}
         chr_lens[prefix] = {}
         # adds the fg count and bg count to their respective dictionaries for each primer to sum fg and bg counts across each prefix
         for primer in primer_dict[prefix]:
@@ -203,24 +189,17 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
             primers_to_bg[primer] += int(primer_dict[prefix][primer][1])
     # iterates through each immutable in the list
     for trip in immut_list:
+        pref = trip[0]
         # iterates through each chromosome in the dictionary of primers
         for chr in trip[1]:
             # adds the length of the chromosome to the above dictionary
-            chr_lens[prefix][chr] = trip[3][chr]
+            chr_lens[pref][chr] = trip[2][chr]
             # if the chromosome has not been added already, initialize an empty dictionary to fill with primers
-            if chr not in primers_with_positions[prefix]:
-                primers_with_positions[prefix][chr] = {}
+            if chr not in primers_with_positions[pref]:
+                primers_with_positions[pref][chr] = {}
             # for each primer in the chromosome add the positions to the central dictionary
             for primer in trip[1][chr]:
-                primers_with_positions[trip[0]][chr][primer] = trip[1][chr][primer]
-        # iterates through each chromosome in the dictionary of reverse complements
-        for chr in trip[2]:
-            # if the chromosome has not been added already, initialize an empty dictionary to fill with primers
-            if chr not in revs_with_positions[prefix]:
-                revs_with_positions[prefix][chr] = {}
-            # for each reverse complement in the chromosome add the positions to the central dictionary
-            for rev in trip[2][chr]:
-                revs_with_positions[trip[0]][chr][rev] = trip[2][chr][rev]
+                primers_with_positions[pref][chr][primer] = trip[1][chr][primer]
     # initialize list to use for dataframe
     primers_as_list = []
     # since the fg and bg dictionaries contain the same primers, only need to iterate through one
@@ -234,9 +213,10 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
     # sort the df first by ratio (low to high) then by fg count (high to low) so the most common and most specific primers will be at the top
     sorted_df = df.sort_values(by=["ratio", "fg_count"], ascending=[True, False])
 
-    return sorted_df, primers_with_positions, revs_with_positions, chr_lens
+    return sorted_df, primers_with_positions, chr_lens
 
 def main(data):
+    t0 = pc()
     bg_total_length = sum(data['bg_seq_lengths'])
 
     print("Filtering primers...")
@@ -248,19 +228,34 @@ def main(data):
     primer_dicts_list = pool.map(filter_primers_into_dict, tasks)
 
     primer_dict = {}
+    primer_sets = {}
     num_primes = 0
     for tup in primer_dicts_list:
         num_primes += len(tup[1])
         if tup[0] not in primer_dict:
             primer_dict[tup[0]] = {}
+            primer_sets[tup[0]] = {}
         primer_dict[tup[0]].update(tup[1])
+        primer_sets[tup[0]][tup[3]] = tup[2]
     print(str(num_primes) + " primers left after filtering")
+    
+    t1 = pc()
+    print("Time to filter primers: " + str(round(t1 - t0, 4)))
 
-    tasks = make_tasks(data["min_primer_length"], data["max_primer_length"], data["fg_genomes"], primer_dict, data["fg_prefixes"])
+    print("Calculating position indices...")
+    ta = pc()
     pool = multiprocessing.Pool(processes=int(data['cpus']))
+    tasks = []
+    for i, fg_genome in enumerate(data['fg_genomes']):
+        prefix = data['fg_prefixes'][i]
+        for k in range(int(data['min_primer_length']), int(data['max_primer_length']) + 1):
+                if len(primer_sets[prefix][k]) > 0:
+                    tasks.append((primer_sets[prefix][k], k, fg_genome, data['fg_prefixes'][i]))
     immut_list = pool.map(get_positions, tasks)
+    tb = pc()
+    print("Time to get all positions:", str(round(tb - ta, 4)))
 
-    df, primers_with_positions, revs_with_positions, chr_lens = make_df(immut_list, primer_dict, data['fg_prefixes'])
+    df, primers_with_positions, chr_lens = make_df(immut_list, primer_dict, data['fg_prefixes'])
 
     if data["write"]:
         df.to_csv(data['data_dir'] + "/primers_df.csv")
@@ -273,19 +268,18 @@ def main(data):
         #                 for primer in primers_with_positions[prefix][chr]:
         #                     to_write = str(primer) + ":" + str(primers_with_positions[prefix][chr][primer]) + "\n"
         #                     f.write(to_write)
-        #         with open(data['data_dir'] + "/" + name + "_reverses_with_positions.csv", 'w+') as f:
-        #             for chr in revs_with_positions[prefix]:
-        #                 f.write(">" + str(chr) + "\n")
-        #                 for primer in revs_with_positions[prefix][chr]:
-        #                     to_write = str(primer) + ":" + str(revs_with_positions[prefix][chr][primer]) + "\n"
-        #                     f.write(to_write)
 
-    return df, primers_with_positions, revs_with_positions, chr_lens
+    return df, primers_with_positions, chr_lens
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]
-    in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/params/test_params.json'
+    in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
     with open(in_json, 'r') as f:
         data = json.load(f)
-    main(data)
+    df, primers_with_positions, chr_lens = main(data)
+    # for pref in primers_with_positions:
+    #     for chr in primers_with_positions[pref]:
+    #         print(chr)
+    #         for key in primers_with_positions[pref][chr]:
+    #             print(key + ":", primers_with_positions[pref][chr][key])
         
