@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import sys
 import json
+from datetime import datetime
 
 def main():
     if len(sys.argv) != 3:
@@ -31,17 +32,19 @@ def main():
         print("=" * 80)
         for elt in data:
             print(f'{elt}: {data[elt]}')
+        dt = datetime.now().strftime('%B %d, %Y at %H:%M')
+        print(f"Started on {dt}")
         print("-" * 80)
 
         if step == "find":
             find.main(data)
         elif step == "sets":
-            df, primers_with_positions, rev_pos, chr_lens = filter.main(data)
-            sets.main(df, primers_with_positions, rev_pos, chr_lens, data)
+            df, primers_with_positions, chr_lens = filter.main(data)
+            sets.main(df, primers_with_positions, chr_lens, data)
         elif step == "all":
             find.main(data)
-            df, primers_with_positions, rev_pos, chr_lens = filter.main(data)
-            sets.main(df, primers_with_positions, rev_pos, chr_lens, data)
+            df, primers_with_positions, chr_lens = filter.main(data)
+            sets.main(df, primers_with_positions, chr_lens, data)
         else:
             print("Invalid step. Input is 'find', 'sets', or 'all'.")
 
@@ -68,7 +71,7 @@ if __name__ == "__main__":
     # print("-" * 80)
     
     # # find.main(data)
-    # df, primers_with_positions, rev_pos, chr_lens = filter.main(data)
-    # sets.main(df, primers_with_positions, rev_pos, chr_lens, data)
+    # df, primers_with_positions, chr_lens = filter.main(data)
+    # sets.main(df, primers_with_positions, chr_lens, data)
     main()
     
