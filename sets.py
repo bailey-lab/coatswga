@@ -1,12 +1,11 @@
 import pandas as pd
-import numpy as np
 import json
-from numba import njit
 from multiply_align.algorithms import PrimerDimerLike
 from filter import rc
 import subprocess
 import multiprocessing
 import os
+from time import perf_counter as pc
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:
     '''
@@ -110,13 +109,11 @@ def setter(task):
                 is sorted first on bg/fg ratio (low to high to get best specificity) then by fg count (high to low to get highest frequency).
             primers_with_postions: A dictionary mapping chromosome number to a dictionary containing all the primers that passed the filter mapped to
                                     a list of the indices of all the hits of that primer on the fg genome
-            rev_positions: A dictionary mapping chromosome number to a dictionary containing all the reverse complements of primers that passed the filter 
-                            mapped to a list of the indices of all the hits of that primer on the fg genome
             chr_lens: Dictionary mapping chromosome number to its length
             data: A JSON object containing hyperparameters
     """
 
-    primer, index, df, primers_with_positions, rev_positions, chr_lens, data = task
+    primer, index, df, primers_with_positions, chr_lens, data = task
 
     # gets total foreground length
     total_fg_length = 0
@@ -157,9 +154,9 @@ def setter(task):
     rev = rc(primer)
     for prefix in prefixes:
         prim_dict = {}
-        for chr in rev_positions[prefix]:
-            if rev in rev_positions[prefix][chr]:
-                prim_dict[chr] = [(max(0, int(pos) + len(rev) - frag_length), int(pos) + len(rev)) for pos in rev_positions[prefix][chr][rev]]
+        for chr in primers_with_positions[prefix]:
+            if rev in primers_with_positions[prefix][chr]:
+                prim_dict[chr] = [(max(0, int(pos) + len(rev) - frag_length), int(pos) + len(rev)) for pos in primers_with_positions[prefix][chr][rev]]
         length, inters = bedtooler(prim_dict, {}, data['data_dir'])
         rev_len += length
         rev_inters[prefix] = inters
@@ -210,9 +207,9 @@ def setter(task):
                     rev = rc(primer)
                     for prefix in prefixes:
                         prim_dict = {}
-                        for chr in rev_positions[prefix]:
-                            if rev in rev_positions[prefix][chr]:
-                                prim_dict[chr] = [(max(0, int(pos) + len(rev) - frag_length), int(pos) + len(rev)) for pos in rev_positions[prefix][chr][rev]]
+                        for chr in primers_with_positions[prefix]:
+                            if rev in primers_with_positions[prefix][chr]:
+                                prim_dict[chr] = [(max(0, int(pos) + len(rev) - frag_length), int(pos) + len(rev)) for pos in primers_with_positions[prefix][chr][rev]]
                         length, inters = bedtooler(prim_dict, rev_inters[prefix], data['data_dir'])
                         rev_len += length
                         rev_inters[prefix] = inters
@@ -280,17 +277,25 @@ def setter(task):
 
     return (primes, fwd_coverage, rev_coverage, total_fgs, total_bgs, total_bgs/total_fgs)
 
-def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict, data):
+def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
     print("Finding sets...")
+    t0 = pc()
     # indices of rows get scrambled when sorting by ratio, have to reset indices to iterate through in order
     df = df.reset_index(drop=True)
 
     if data['cpus'] == 1:
-        setter((df['primer'][0], 0, df, primers_with_positions, rev_positions, chr_lens, data))
+        out = setter((df['primer'][0], 0, df, primers_with_positions, chr_lens, data))
+        print("\nFinal set: ")
+        print(str(out[0]))
+        print("Expected forward coverage: " + str(round(out[1], 3)))
+        print("Expected reverse coverage: " + str(round(out[2], 3)))
+        print("Total foreground hits: " + str(out[3]))
+        print("Total background hits: " + str(out[4]))
+        print("Bg/fg ratio: " + str(round(out[5], 3)) + "\n")
     else: 
         tasks = []
         for i in range(data['cpus']):
-            tasks.append((df['primer'][i], i, df, primers_with_positions, rev_positions, chr_lens, data))
+            tasks.append((df['primer'][i], i, df, primers_with_positions, chr_lens, data))
         pool = multiprocessing.Pool(processes=data['cpus'])
         out = pool.map(setter, tasks)
         fewest = 0
@@ -390,6 +395,7 @@ def main(df:list, primers_with_positions:dict, rev_positions:dict, chr_lens:dict
             print("Total foreground hits: " + str(out[best_coverage][3]))
             print("Total background hits: " + str(out[best_coverage][4]))
             print("Bg/fg ratio: " + str(round(out[best_coverage][5], 3)) + "\n")
+    print("Time finding sets:", pc() - t0)
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]
@@ -407,12 +413,4 @@ if __name__ == "__main__":
                 positions = []
             prim_w_pos[primer] = positions
             pair = f.readline().strip()
-    rev_w_pos = {}
-    with open(data['data_dir'] + "/reverses_with_positions.csv", 'r') as f:
-        pair = f.readline().strip()
-        while pair != "":
-            primer = pair.split(':')[0]
-            positions = pair.split(':')[1].strip('][').split(', ')
-            rev_w_pos[primer] = positions
-            pair = f.readline().strip()
-    main(df, prim_w_pos, rev_w_pos, data)
+    main(df, prim_w_pos, data)
