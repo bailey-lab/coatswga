@@ -49,10 +49,9 @@ def filter_primers_into_dict(task):
             prefix: The prefix passed to the function, used to separate kmer counts from different genomes
             primer_dict: Dictionary mapping the primers that pass the filters to a list containing amount of foreground and background hits
     '''
-    prefix, k, data, bg_total_length = task
+    prefix, k, data = task
     primer_set = set()
     primer_dict = {}
-    max_freq = 1/data['fragment_length']
     # for each prefix, iterate through each kmer length to search in the jellyfish files
     with open(prefix+'_'+str(k)+'mer_all.txt', 'r') as f_in:
         for line in f_in:
@@ -73,7 +72,7 @@ def filter_primers_into_dict(task):
                         count_tuple = subprocess.check_output(['jellyfish', 'query', bg_prefix+'_'+str(k)+'mer_all.jf', kmer]).decode().strip().split(' ')
                         bg_count += int(count_tuple[1])
                     # final check if background frequency is below threshold, add to the primer dict if yes
-                    if bg_count/bg_total_length < max_freq:
+                    if bg_count/fg_count < data['max_ratio']:
                         primer_dict[kmer] = [fg_count, bg_count]
                         primer_set.add(kmer)
                         primer_set.add(rc(kmer))
@@ -189,13 +188,12 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
 
 def main(data):
     t0 = pc()
-    bg_total_length = sum(data['bg_seq_lengths'])
 
     print("Filtering primers...")
     tasks = []
     for prefix in data["fg_prefixes"]:
         for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
-            tasks.append((prefix, k, data, bg_total_length))
+            tasks.append((prefix, k, data))
     pool = multiprocessing.Pool(processes=int(data['cpus']))
     primer_dicts_list = pool.map(filter_primers_into_dict, tasks)
 
