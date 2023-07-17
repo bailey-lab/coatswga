@@ -218,14 +218,15 @@ def setter(task):
                     total_bgs += df['bg_count'][index]
                     fwd_coverage = fwd_len/total_fg_length
                     if data['verbose']:
-                        print(f"{pid} added  {primer} to set")
+                        print(f"{pid} added {primer} to set")
                         print(f"{pid} forward coverage: " + str(round(fwd_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
+            if coverage_change <= 0.2 and fwd_coverage < 0.75 * data["target_coverage"]:
+                break
             coverage_change = round(coverage_change - 0.1, 2)
-            if data['verbose']:
-                print(f"{pid} coverage factor to {coverage_change}")
+            # print(f"{pid} coverage factor to {coverage_change}")
     
     rev_coverage = rev_len/total_fg_length
     coverage_change = 0.9
@@ -267,14 +268,15 @@ def setter(task):
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/total_fg_length
                     if data['verbose']:
-                        print(f"{pid} added  {primer} to set")
+                        print(f"{pid} added {primer} to set")
                         print(f"{pid} reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
+            if coverage_change <= 0.2 and rev_coverage < 0.75 * data["target_coverage"]:
+                break
             coverage_change = round(coverage_change - 0.1, 2)
-            if data['verbose']:
-                print(f"{pid} coverage factor to {coverage_change}")
+            # print(f"{pid} coverage factor to {coverage_change}")
     if os.path.exists(f"{data['data_dir']}/pos{pid}.bed"):
         os.remove(f"{data['data_dir']}/pos{pid}.bed")
     
@@ -334,8 +336,16 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
                 ratio = out[i][5]
             elif out[i][5] == ratio and (out[i][1] + out[i][2])/2 > (out[lowest_ratio][1] + out[lowest_ratio][2])/2:
                 lowest_ratio = i
-    
-        if fewest == best_coverage:
+        
+        if fewest == best_coverage and best_coverage == lowest_ratio:
+            print("\nSet with highest coverage, fewest primers, and lowest ratio: ")
+            print(str(out[fewest][0]))
+            print("Expected forward coverage: " + str(round(out[fewest][1], 3)))
+            print("Expected reverse coverage: " + str(round(out[fewest][2], 3)))
+            print("Total foreground hits: " + str(out[fewest][3]))
+            print("Total background hits: " + str(out[fewest][4]))
+            print("Bg/fg ratio: " + str(round(out[fewest][5], 3)))
+        elif fewest == best_coverage:
             print("\nSet with highest coverage and fewest primers: ")
             print(str(out[fewest][0]))
             print("Expected forward coverage: " + str(round(out[fewest][1], 3)))
