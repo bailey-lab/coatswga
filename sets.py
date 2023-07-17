@@ -268,15 +268,24 @@ def setter(task):
                     rev_coverage = rev_len/total_fg_length
                     if data['verbose']:
                         print(f"{pid} added  {primer} to set")
-                        print(f"{pid} reverse coverage: " + str(round(fwd_coverage, 3)))
+                        print(f"{pid} reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
             coverage_change = round(coverage_change - 0.1, 2)
             if data['verbose']:
                 print(f"{pid} coverage factor to {coverage_change}")
-
-    os.remove(f"{data['data_dir']}/pos{pid}.bed")
+    if os.path.exists(f"{data['data_dir']}/pos{pid}.bed"):
+        os.remove(f"{data['data_dir']}/pos{pid}.bed")
+    
+    if data['verbose']:
+        print(f"\nFinal set for {pid}: ")
+        print(str(primes))
+        print("Expected forward coverage: " + str(round(fwd_coverage, 3)))
+        print("Expected reverse coverage: " + str(round(rev_coverage, 3)))
+        print("Total foreground hits: " + str(total_fgs))
+        print("Total background hits: " + str(total_bgs))
+        print("Bg/fg ratio: " + str(round(total_bgs/total_fgs, 3)) + "\n")
 
     return (primes, fwd_coverage, rev_coverage, total_fgs, total_bgs, total_bgs/total_fgs)
 
@@ -402,18 +411,39 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]
-    in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
+    in_json = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/params/soaper_params.json'
     with open(in_json, 'r') as f:
         data = json.load(f)
-    df = pd.read_csv(data['data_dir'] + "/primers_df.csv")
-    prim_w_pos = {}
-    with open(data['data_dir'] + "/primers_with_positions.csv", 'r') as f:
-        pair = f.readline().strip()
-        while pair != "":
-            primer = pair.split(':')[0]
-            positions = pair.split(':')[1].strip('][').split(', ')
-            if positions == ['']:
-                positions = []
-            prim_w_pos[primer] = positions
-            pair = f.readline().strip()
-    main(df, prim_w_pos, data)
+    # df = pd.read_csv(data['data_dir'] + "/primers_df.csv")
+    df = pd.read_csv("/Users/kaleb/Desktop/soap_counts.csv")
+    df = df.sort_values(by=["ratio", "fg_count"], ascending=[True, False])
+    pref = '/Users/Kaleb/Desktop/Bailey_Lab/code/newswga/kmers/malaria'
+    prim_w_pos = {pref: {}}
+    # with open(data['data_dir'] + "/primers_with_positions.csv", 'r') as f:
+    #     pair = f.readline().strip()
+    #     while pair != "":
+    #         primer = pair.split(':')[0]
+    #         positions = pair.split(':')[1].strip('][').split(', ')
+    #         if positions == ['']:
+    #             positions = []
+    #         prim_w_pos[primer] = positions
+    #         pair = f.readline().strip()
+    with open("/Users/kaleb/Desktop/soap_primers_with_positions.csv", 'r') as f:
+        chr = ""
+        for line in f:
+            line = line.strip()
+            if ">" in line:
+                chr = line[1:]
+                prim_w_pos[pref][chr] = {}
+            else:
+                primer = line.split(':')[0]
+                positions = line.split(':')[1].strip('][').split(', ')
+                if positions == ['']:
+                    positions = []
+                prim_w_pos[pref][chr][primer] = positions
+    lens = {pref:{}}
+    with open("/Users/kaleb/Desktop/soap_chr_lens.csv", "r") as f:
+        for line in f:
+            line = line.strip().split("~")
+            lens[pref][line[0]] = int(line[1])
+    main(df, prim_w_pos, lens, data)
