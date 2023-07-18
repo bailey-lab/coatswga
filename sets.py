@@ -223,8 +223,6 @@ def setter(task):
         index += 1
         if index == len(df):
             index = 0
-            if coverage_change <= 0.2 and fwd_coverage < 0.75 * data["target_coverage"]:
-                break
             coverage_change = round(coverage_change - 0.1, 2)
             # print(f"{pid} coverage factor to {coverage_change}")
     
@@ -273,8 +271,6 @@ def setter(task):
         index += 1
         if index == len(df):
             index = 0
-            if coverage_change <= 0.2 and rev_coverage < 0.75 * data["target_coverage"]:
-                break
             coverage_change = round(coverage_change - 0.1, 2)
             # print(f"{pid} coverage factor to {coverage_change}")
     if os.path.exists(f"{data['data_dir']}/pos{pid}.bed"):
