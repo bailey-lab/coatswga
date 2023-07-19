@@ -182,7 +182,7 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
     # make a DataFrame from the list
     df = pd.DataFrame(primers_as_list, columns=['primer', 'fg_count', 'bg_count'])
     # calculate the bg/fg ratio for each primer
-    df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
+    # df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
     # sort the df first by ratio (low to high) then by fg count (high to low) so the most common and most specific primers will be at the top
     df['sort_val'] = df.apply(lambda x: x['fg_count']/x['ratio'])
     sorted_df = df.sort_values(by='sort_val', ascending=False)
