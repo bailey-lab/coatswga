@@ -20,13 +20,13 @@ def rc(seq: str) -> str:
     rev = ""
     for char in seq:
         if char == "G":
-            rev = rev + "C"
+            rev = "C" + rev
         elif char == "C":
-            rev = rev + "G"
+            rev = "G" + rev
         elif char == "A":
-            rev = rev + "T"
+            rev = "T" + rev
         elif char == "T":
-            rev = rev + "A"
+            rev = "A" + rev
         else:
             print("Cannot compute reverse complement. " +
                   seq + " is not a DNA sequence.")
