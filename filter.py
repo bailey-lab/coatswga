@@ -76,6 +76,8 @@ def filter_primers_into_dict(task):
                         primer_dict[kmer] = [fg_count, bg_count]
                         primer_set.add(kmer)
                         primer_set.add(rc(kmer))
+    if data['verbose']:
+        print(f"{len(primer_dict)} {k}-mers in {prefix}")
     return (prefix, primer_dict, primer_set, k)
 
 def get_positions(task):
