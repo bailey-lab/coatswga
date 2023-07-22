@@ -1,10 +1,10 @@
-import pandas as pd
 import json
-from multiply_align.algorithms import PrimerDimerLike
-from filter import rc
 import subprocess
+import pandas as pd
 import multiprocessing
 import os
+from multiply_align.algorithms import PrimerDimerLike
+from filter import rc
 from time import perf_counter as pc
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:

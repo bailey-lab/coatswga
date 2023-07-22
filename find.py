@@ -1,49 +1,41 @@
-import sys
-import os
 import json
+import subprocess
+import os
 
-def run_jellyfish(data, seq_length, genome_fname=None, output_prefix=None, min=6, max=12):
-    """
-    Runs jellyfish program using the output_prefix and transfroms the kmer count information to txt files. Count k-mers within range 
-    found in the JSON file.
-
-    Args:
-        data: A JSON object containing hyperparameters
-        genome_fname: The fasta file used to count kmers.
-        output_prefix: The output path prefix for the output files. Resulting output files will be suffixed by _kmer_all.txt for k from 6 to 12 inclusive.
-    """
-    for k in range(min, max+1, 1):
-        if not os.path.exists(output_prefix+'_'+str(k)+'mer_all.txt'):
-            os.system("jellyfish count -m "+str(k) + " -s " + str(seq_length) + " -t " + str(data['cpus']) + " " + genome_fname + " -o " + output_prefix+'_'+str(k)+'mer_all.jf')
-            os.system("jellyfish dump -c " + output_prefix+'_'+str(k)+'mer_all.jf' + " > " + output_prefix+'_'+str(k)+'mer_all.txt')
-        if os.path.exists(output_prefix+'_'+str(k)+'mer_all.jf'):
-            os.system("rm " + output_prefix+'_'+str(k)+'mer_all.jf')
-
-def step1(data, fg_prefixes, fg_genomes, bg_prefixes, bg_genomes, min, max):
+def step1(data_dir, fg_prefixes, fg_genomes, bg_genomes, min, max, cpus):
     """
     Creates files of all k-mers of specified lengths which is located in the path specificed in the JSON file
     """
-    for prefix in fg_prefixes:
-        if not os.path.exists(os.path.dirname(prefix)):
-            os.makedirs(os.path.dirname(prefix))
+    if not os.path.exists(os.path.dirname(data_dir)):
+        os.makedirs(os.path.dirname(data_dir))
 
-    print("Running jellyfish for foreground...")
+    kmer_dir = data_dir + "kmer_files/"
+    if not os.path.exists(os.path.dirname(kmer_dir)):
+        os.makedirs(os.path.dirname(kmer_dir))
+
+
+    print("Running kmc for foreground...")
     for i, fg_prefix in enumerate(fg_prefixes):
-        run_jellyfish(data, data['fg_seq_lengths'][i], fg_genomes[i], fg_prefix, min, max)
-
-    print("Running jellyfish for background...")
-    for i, bg_prefix in enumerate(bg_prefixes):
         for k in range(min, max+1, 1):
-            if not os.path.exists(bg_prefix+'_'+str(k)+'mer_all.jf'):
-                os.system("jellyfish count -m "+str(k) + " -s " + str(data['bg_seq_lengths'][i]) + " -t " + str(data['cpus']) + " " + bg_genomes[i] + " -o " + bg_prefix+'_'+str(k)+'mer_all.jf')
+            if not os.path.exists(kmer_dir + fg_prefix+'_'+str(k)+'mers.kmc_pre') or not os.path.exists(kmer_dir + fg_prefix+'_'+str(k)+'mers.kmc_suf'):
+                subprocess.run(["kmc", f"-k{k}", "-hp", f"-t{cpus}", "-fm", "-cs1000000000", "-b", f"{fg_genomes[i]}", f"{kmer_dir}{fg_prefix}_{k}mers", f"{kmer_dir}"], stdout=subprocess.DEVNULL)
 
-    print("Done running jellyfish")
+    print("Running kmc for background...")
+    with open(kmer_dir + "/files", 'w') as f:
+        for genome in bg_genomes:
+            f.write(genome + "\n")
+    for k in range(min, max+1, 1):
+        if not os.path.exists(f'{kmer_dir}bg_{k}mers.kmc_pre') or not os.path.exists(f'{kmer_dir}bg_{k}mers.kmc_suf'):
+            subprocess.run(["kmc", f"-k{k}", "-hp", f"-t{cpus}", "-fm", "-cs1000000000", "-b", f"@{kmer_dir}/files", f"{kmer_dir}bg_{k}mers", f"{kmer_dir}"], stdout=subprocess.DEVNULL)
+    os.system(f"rm {kmer_dir}/files")
+
+    print("Done running kmc")
 
 def main(data):
-    step1(data, data["fg_prefixes"], data["fg_genomes"], data['bg_prefixes'], data['bg_genomes'], int(data["min_primer_length"]), int(data["max_primer_length"]))
+    step1(data['data_dir'], data["fg_prefixes"], data["fg_genomes"], data['bg_genomes'], int(data["min_primer_length"]), int(data["max_primer_length"]), data['cpus'])
 
 if __name__ == "__main__":
-    in_json = sys.argv[1]
+    in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
     with open(in_json, 'r') as f:
         global data
         data = json.load(f)

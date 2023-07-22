@@ -1,10 +1,8 @@
+import json
+import sys
 import find as find
 import filter as filter
 import sets as sets
-import numpy as np
-import pandas as pd
-import sys
-import json
 from datetime import datetime
 
 def main():
@@ -18,16 +16,8 @@ def main():
         with open(in_json, 'r') as f:
             data = json.load(f)
         
-        if data['data_dir'][-1] == "/":
-            data['data_dir'] = data['data_dir'][:-1]
-
-        for i, pref in enumerate(data["fg_prefixes"]):
-            if pref[-1] == "/":
-                data["fg_prefixes"][i] = data["fg_prefixes"][i][:-1]
-
-        for i, pref in enumerate(data["bg_prefixes"]):
-            if pref[-1] == "/":
-                data["bg_prefixes"][i] = data["bg_prefixes"][i][:-1]
+        if not data['data_dir'][-1] == "/":
+            data['data_dir'] = data['data_dir'] + "/"
 
         print("=" * 80)
         for elt in data:
@@ -49,28 +39,19 @@ def main():
             print("Invalid step. Input is 'find', 'sets', or 'all'.")
 
 if __name__ == "__main__":
-    # step = "sets"
-    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/test_params.json'
+    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
     # with open(in_json, 'r') as f:
     #     data = json.load(f)
     
-    # if data['data_dir'][-1] == "/":
-    #         data['data_dir'] = data['data_dir'][:-1]
-
-    # for i, pref in enumerate(data["fg_prefixes"]):
-    #     if pref[-1] == "/":
-    #         data["fg_prefixes"][i] = data["fg_prefixes"][i][:-1]
-
-    # for i, pref in enumerate(data["bg_prefixes"]):
-    #     if pref[-1] == "/":
-    #         data["bg_prefixes"][i] = data["bg_prefixes"][i][:-1]
+    # if not data['data_dir'][-1] == "/":
+    #     data['data_dir'] = data['data_dir'] + "/"
     
     # print("=" * 80)
     # for elt in data:
     #     print(f'{elt}: {data[elt]}')
     # print("-" * 80)
     
-    # # find.main(data)
+    # find.main(data)
     # df, primers_with_positions, chr_lens = filter.main(data)
     # sets.main(df, primers_with_positions, chr_lens, data)
     main()

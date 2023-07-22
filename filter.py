@@ -1,10 +1,9 @@
-import multiprocessing
-import sys
 import json
-import melting
-import numpy as np
-import pandas as pd
 import subprocess
+import pandas as pd
+import multiprocessing
+import os
+import melting
 from time import perf_counter as pc
 
 def rc(seq: str) -> str:
@@ -49,35 +48,53 @@ def filter_primers_into_dict(task):
             prefix: The prefix passed to the function, used to separate kmer counts from different genomes
             primer_dict: Dictionary mapping the primers that pass the filters to a list containing amount of foreground and background hits
     '''
-    prefix, k, data, bg_total_len = task
+    prefix, k, data = task
+    kmer_dir = data["data_dir"] + "kmer_files/"
     primer_set = set()
     primer_dict = {}
-    # for each prefix, iterate through each kmer length to search in the jellyfish files
-    with open(prefix+'_'+str(k)+'mer_all.txt', 'r') as f_in:
-        for line in f_in:
-            # jellyfish dump outputs in the format "[kmer] [count]" so split on space to separate
-            tupled = line.strip().split(" ")
-            # isolate kmer
-            kmer = tupled[0]
-            # isolate count
-            fg_count = int(tupled[1])
-            if fg_count > data["min_fg_count"]:
-                # calculate melting temp of the kmer
-                tm = melting.temp(kmer)
-                # check melting temp is within range
-                if tm < data['max_tm'] and tm > data['min_tm']:
-                    bg_count = 0
-                    # iterate through each background genome given, querying the jellyfish files for counts and summing them
-                    for bg_prefix in data['bg_prefixes']:
-                        count_tuple = subprocess.check_output(['jellyfish', 'query', bg_prefix+'_'+str(k)+'mer_all.jf', kmer]).decode().strip().split(' ')
-                        bg_count += int(count_tuple[1])
-                    # final check if background frequency is below threshold, add to the primer dict if yes
-                    if bg_count/bg_total_len < 1/data['fragment_length'] and bg_count/fg_count < data['max_ratio']:
-                        primer_dict[kmer] = [fg_count, bg_count]
-                        primer_set.add(kmer)
-                        primer_set.add(rc(kmer))
+    subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}{prefix}_{k}mers", "reduce", f"{kmer_dir}red_{prefix}_{k}mers", f"-ci{data['min_fg_count']}"], stdout=subprocess.DEVNULL)
+    subprocess.run(["kmc_tools", 
+                    "-t1", 
+                    "-hp", 
+                    "simple", 
+                    f"{kmer_dir}red_{prefix}_{k}mers", 
+                    f"{kmer_dir}bg_{k}mers", 
+                    "intersect", 
+                    f"{kmer_dir}bg_{k}mer_counts", 
+                    "-ocright"],
+                    stdout=subprocess.DEVNULL)
+
+    while not os.path.exists(f"{kmer_dir}bg_{k}mers.txt"):
+        subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}bg_{k}mer_counts", "dump", f"{kmer_dir}bg_{k}mers.txt"])
+    while not os.path.exists(f"{kmer_dir}{prefix}_{k}mers.txt"):
+        subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}red_{prefix}_{k}mers", "dump", f"{kmer_dir}{prefix}_{k}mers.txt"])
+    subprocess.run(["rm", 
+                    f"{kmer_dir}bg_{k}mer_counts.kmc_pre", 
+                    f"{kmer_dir}bg_{k}mer_counts.kmc_suf", 
+                    f"{kmer_dir}red_{prefix}_{k}mers.kmc_pre", 
+                    f"{kmer_dir}red_{prefix}_{k}mers.kmc_suf"])
+    
+        
+    
+    with open(f"{kmer_dir}{prefix}_{k}mers.txt", 'r') as fg_file, open(f"{kmer_dir}bg_{k}mers.txt", 'r') as bg_file:
+        kmer_to_bg = {}
+        for line in bg_file:
+            kmer = line.strip().split("\t")[0]
+            bg_count = int(line.strip().split("\t")[1])
+            kmer_to_bg[kmer] = bg_count
+        for line in fg_file:
+            kmer = line.strip().split("\t")[0]
+            fg_count = int(line.strip().split("\t")[1])
+            if kmer not in kmer_to_bg:
+                kmer_to_bg[kmer] = 0
+            if kmer_to_bg[kmer]/fg_count <= data['max_ratio'] and melting.temp(kmer) <= data['max_tm']:
+                primer_dict[kmer] = [fg_count, kmer_to_bg[kmer]]
+                primer_set.add(kmer)
+                primer_set.add(rc(kmer))
     if data['verbose']:
         print(f"{len(primer_dict)} {k}-mers in {prefix}")
+    else:
+        subprocess.run(["rm", f"{kmer_dir}bg_{k}mers.txt", f"{kmer_dir}{prefix}_{k}mers.txt"])
     return (prefix, primer_dict, primer_set, k)
 
 def get_positions(task):
@@ -193,13 +210,11 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
 def main(data):
     t0 = pc()
 
-    bg_total_lens = sum(data['bg_seq_lengths'])
-
     print("Filtering primers...")
     tasks = []
     for prefix in data["fg_prefixes"]:
         for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
-            tasks.append((prefix, k, data, bg_total_lens))
+            tasks.append((prefix, k, data))
     pool = multiprocessing.Pool(processes=int(data['cpus']))
     primer_dicts_list = pool.map(filter_primers_into_dict, tasks)
 
