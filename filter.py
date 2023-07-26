@@ -50,33 +50,31 @@ def filter_primers_into_dict(task):
     '''
     prefix, k, data = task
     kmer_dir = data["data_dir"] + "kmer_files/"
+    bg_prefix = data['bg_prefix']
     primer_set = set()
     primer_dict = {}
-    subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}{prefix}_{k}mers", "reduce", f"{kmer_dir}red_{prefix}_{k}mers", f"-ci{data['min_fg_count']}"], stdout=subprocess.DEVNULL)
-    subprocess.run(["kmc_tools", 
+    subprocess.run(["/Users/kaleb/Downloads/bin/kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}{prefix}_{k}mers", "reduce", f"{kmer_dir}red_{prefix}_{k}mers", f"-ci{data['min_fg_count']}"])
+    subprocess.run(["/Users/kaleb/Downloads/bin/kmc_tools", 
                     "-t1", 
                     "-hp", 
                     "simple", 
                     f"{kmer_dir}red_{prefix}_{k}mers", 
-                    f"{kmer_dir}bg_{k}mers", 
+                    f"{kmer_dir}{bg_prefix}_{k}mers", 
                     "intersect", 
-                    f"{kmer_dir}bg_{k}mer_counts", 
-                    "-ocright"],
-                    stdout=subprocess.DEVNULL)
+                    f"{kmer_dir}{bg_prefix}_{k}mer_counts", 
+                    "-ocright"])
 
-    while not os.path.exists(f"{kmer_dir}bg_{k}mers.txt"):
-        subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}bg_{k}mer_counts", "dump", f"{kmer_dir}bg_{k}mers.txt"])
-    while not os.path.exists(f"{kmer_dir}{prefix}_{k}mers.txt"):
-        subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}red_{prefix}_{k}mers", "dump", f"{kmer_dir}{prefix}_{k}mers.txt"])
+    # while not os.path.exists(f"{kmer_dir}{bg_prefix}_{k}mers.txt"):
+    subprocess.run(["/Users/kaleb/Downloads/bin/kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}{bg_prefix}_{k}mer_counts", "dump", f"{kmer_dir}{bg_prefix}_{k}mers.txt"])
+    # while not os.path.exists(f"{kmer_dir}{prefix}_{k}mers.txt"):
+    subprocess.run(["/Users/kaleb/Downloads/bin/kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}red_{prefix}_{k}mers", "dump", f"{kmer_dir}{prefix}_{k}mers.txt"])
     subprocess.run(["rm", 
-                    f"{kmer_dir}bg_{k}mer_counts.kmc_pre", 
-                    f"{kmer_dir}bg_{k}mer_counts.kmc_suf", 
+                    f"{kmer_dir}{bg_prefix}_{k}mer_counts.kmc_pre", 
+                    f"{kmer_dir}{bg_prefix}_{k}mer_counts.kmc_suf", 
                     f"{kmer_dir}red_{prefix}_{k}mers.kmc_pre", 
                     f"{kmer_dir}red_{prefix}_{k}mers.kmc_suf"])
     
-        
-    
-    with open(f"{kmer_dir}{prefix}_{k}mers.txt", 'r') as fg_file, open(f"{kmer_dir}bg_{k}mers.txt", 'r') as bg_file:
+    with open(f"{kmer_dir}{prefix}_{k}mers.txt", 'r') as fg_file, open(f"{kmer_dir}{bg_prefix}_{k}mers.txt", 'r') as bg_file:
         kmer_to_bg = {}
         for line in bg_file:
             kmer = line.strip().split("\t")[0]
@@ -91,10 +89,10 @@ def filter_primers_into_dict(task):
                 primer_dict[kmer] = [fg_count, kmer_to_bg[kmer]]
                 primer_set.add(kmer)
                 primer_set.add(rc(kmer))
-    if data['verbose']:
+    if data['write']:
         print(f"{len(primer_dict)} {k}-mers in {prefix}")
     else:
-        subprocess.run(["rm", f"{kmer_dir}bg_{k}mers.txt", f"{kmer_dir}{prefix}_{k}mers.txt"])
+        subprocess.run(["rm", f"{kmer_dir}{bg_prefix}_{k}mers.txt", f"{kmer_dir}{prefix}_{k}mers.txt"])
     return (prefix, primer_dict, primer_set, k)
 
 def get_positions(task):
@@ -211,13 +209,18 @@ def main(data):
     t0 = pc()
 
     print("Filtering primers...")
-    tasks = []
-    for prefix in data["fg_prefixes"]:
-        for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
-            tasks.append((prefix, k, data))
-    pool = multiprocessing.Pool(processes=int(data['cpus']))
-    primer_dicts_list = pool.map(filter_primers_into_dict, tasks)
-
+    if data['cpus'] > 1:
+        tasks = []
+        for prefix in data["fg_prefixes"]:
+            for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
+                tasks.append((prefix, k, data))
+        pool = multiprocessing.Pool(processes=int(data['cpus']))
+        primer_dicts_list = pool.map(filter_primers_into_dict, tasks)
+    else:
+        primer_dicts_list = []
+        for prefix in data["fg_prefixes"]:
+            for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
+                primer_dicts_list.append(filter_primers_into_dict((prefix, k, data)))
     primer_dict = {}
     primer_sets = {}
     num_primes = 0

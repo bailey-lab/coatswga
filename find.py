@@ -2,7 +2,7 @@ import json
 import subprocess
 import os
 
-def step1(data_dir, fg_prefixes, fg_genomes, bg_genomes, min, max, cpus):
+def step1(data_dir, fg_prefixes, fg_genomes, bg_prefix, bg_genomes, min, max, cpus):
     """
     Creates files of all k-mers of specified lengths which is located in the path specificed in the JSON file
     """
@@ -25,14 +25,14 @@ def step1(data_dir, fg_prefixes, fg_genomes, bg_genomes, min, max, cpus):
         for genome in bg_genomes:
             f.write(genome + "\n")
     for k in range(min, max+1, 1):
-        if not os.path.exists(f'{kmer_dir}bg_{k}mers.kmc_pre') or not os.path.exists(f'{kmer_dir}bg_{k}mers.kmc_suf'):
-            subprocess.run(["kmc", f"-k{k}", "-hp", f"-t{cpus}", "-fm", "-cs1000000000", "-b", f"@{kmer_dir}/files", f"{kmer_dir}bg_{k}mers", f"{kmer_dir}"], stdout=subprocess.DEVNULL)
+        if not os.path.exists(f'{kmer_dir}{bg_prefix}_{k}mers.kmc_pre') or not os.path.exists(f'{kmer_dir}{bg_prefix}_{k}mers.kmc_suf'):
+            subprocess.run(["kmc", f"-k{k}", "-hp", f"-t{cpus}", "-fm", "-cs1000000000", "-b", f"@{kmer_dir}/files", f"{kmer_dir}{bg_prefix}_{k}mers", f"{kmer_dir}"], stdout=subprocess.DEVNULL)
     os.system(f"rm {kmer_dir}/files")
 
     print("Done running kmc")
 
 def main(data):
-    step1(data['data_dir'], data["fg_prefixes"], data["fg_genomes"], data['bg_genomes'], int(data["min_primer_length"]), int(data["max_primer_length"]), data['cpus'])
+    step1(data['data_dir'], data["fg_prefixes"], data["fg_genomes"], data['bg_prefix'], data['bg_genomes'], int(data["min_primer_length"]), int(data["max_primer_length"]), data['cpus'])
 
 if __name__ == "__main__":
     in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
