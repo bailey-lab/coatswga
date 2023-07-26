@@ -89,9 +89,9 @@ def filter_primers_into_dict(task):
                 primer_dict[kmer] = [fg_count, kmer_to_bg[kmer]]
                 primer_set.add(kmer)
                 primer_set.add(rc(kmer))
-    if data['write']:
+    if data['verbose']:
         print(f"{len(primer_dict)} {k}-mers in {prefix}")
-    else:
+    if data['write']:
         subprocess.run(["rm", f"{kmer_dir}{bg_prefix}_{k}mers.txt", f"{kmer_dir}{prefix}_{k}mers.txt"])
     return (prefix, primer_dict, primer_set, k)
 

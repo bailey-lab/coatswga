@@ -166,7 +166,7 @@ def setter(task):
     fwd_coverage = fwd_len / total_fg_length
     total_fgs = df['fg_count'][index]
     total_bgs = df['bg_count'][index]
-    while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.005:
+    while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.01:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
@@ -178,7 +178,6 @@ def setter(task):
                 
                 # initialize variable to hold the old covered genome intervals, amount of indices covered by the primer, and amount of indices covered by the primer plus the set
                 tot_len = 0
-                prim_coverage_len = 0
                 new_inters = fwd_inters.copy()
 
                 # for each fg genome passed
@@ -186,14 +185,12 @@ def setter(task):
                     # check if the primer intervals have already been calculated
                     if primer not in prim_inters[prefix]:
                         # if no, run bedtooler() for the primer's intervals and an empty dictionary as the second argument, store length and intervals
-                        prim_dict = {}
+                        prim_inters[prefix][primer] = {}
                         for chr in primers_with_positions[prefix]:
                             if primer in primers_with_positions[prefix][chr]:
-                                prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + frag_length)) for pos in primers_with_positions[prefix][chr][primer]]
-                        prim_inters[prefix][primer] = bedtooler(prim_dict, {}, data['data_dir'])
+                                prim_inters[prefix][primer][chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + frag_length)) for pos in primers_with_positions[prefix][chr][primer]]
                     # run bedtooler for the primer and the intervals of the current set
-                    length, intervals = bedtooler(prim_inters[prefix][primer][1], new_inters[prefix], data['data_dir'])
-                    prim_coverage_len += prim_inters[prefix][primer][0]
+                    length, intervals = bedtooler(prim_inters[prefix][primer], new_inters[prefix], data['data_dir'])
                     tot_len += length
                     new_inters[prefix] = intervals
 
@@ -231,7 +228,7 @@ def setter(task):
     coverage_change = 0.75
     index = 0
     prim_inters = {prefix: {} for prefix in prefixes}
-    while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.005:
+    while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.01:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
@@ -244,17 +241,13 @@ def setter(task):
 
                 tot_len = 0
                 new_inters = rev_inters.copy()
-                prim_coverage_len = 0
                 for prefix in prefixes:
                     if rev not in prim_inters[prefix]:
-                        prim_dict = {}
+                        prim_inters[prefix][rev] = {}
                         for chr in primers_with_positions[prefix]:
                             if primer in primers_with_positions[prefix][chr]:
-                                prim_dict[chr] = [(max(0, int(pos) + len(primer) - frag_length), int(pos) + len(primer)) for pos in primers_with_positions[prefix][chr][primer]]
-                        prim_inters[prefix][rev] = bedtooler(prim_dict, {}, data['data_dir'])
-                    prim_coverage_len += prim_inters[prefix][rev][0]
-
-                    length, intervals = bedtooler(prim_inters[prefix][rev][1], new_inters[prefix], data['data_dir'])
+                                prim_inters[prefix][rev][chr] = [(max(0, int(pos) + len(primer) - frag_length), int(pos) + len(primer)) for pos in primers_with_positions[prefix][chr][primer]]
+                    length, intervals = bedtooler(prim_inters[prefix][rev], new_inters[prefix], data['data_dir'])
                     tot_len += length
                     new_inters[prefix] = intervals 
 
@@ -317,9 +310,14 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
         print("Total background hits: " + str(out[4]))
         print("Bg/fg ratio: " + str(round(out[5], 3)) + "\n")
     else: 
-        tasks = []
-        for i in range(data['cpus']):
-            tasks.append((df['primer'][i], i, df, primers_with_positions, chr_lens, data))
+        tasks = [(df['primer'][0], 0, df, primers_with_positions, chr_lens, data)]
+        added = [df['primer'][0]]
+        for i in range(1, data['cpus']):
+            for index in range(1, len(df)):
+                if df['primer'][index] not in added and is_dimer(added, df['primer'][index]):
+                    tasks.append((df['primer'][index], index, df, primers_with_positions, chr_lens, data))
+                    added.append(df['primer'][index])
+                    break
         pool = multiprocessing.Pool(processes=data['cpus'])
         out = pool.map(setter, tasks)
         fewest = 0
