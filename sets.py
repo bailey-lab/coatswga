@@ -166,7 +166,7 @@ def setter(task):
     fwd_coverage = fwd_len / total_fg_length
     total_fgs = df['fg_count'][index]
     total_bgs = df['bg_count'][index]
-    while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.01:
+    while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.005:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
@@ -231,7 +231,7 @@ def setter(task):
     coverage_change = 0.75
     index = 0
     prim_inters = {prefix: {} for prefix in prefixes}
-    while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
+    while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.005:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
