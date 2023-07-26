@@ -2,8 +2,8 @@ import json
 import subprocess
 import pandas as pd
 import multiprocessing
-import os
 import melting
+from find import src_dir
 from time import perf_counter as pc
 
 def rc(seq: str) -> str:
@@ -53,8 +53,8 @@ def filter_primers_into_dict(task):
     bg_prefix = data['bg_prefix']
     primer_set = set()
     primer_dict = {}
-    subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}{prefix}_{k}mers", "reduce", f"{kmer_dir}red_{prefix}_{k}mers", f"-ci{data['min_fg_count']}"])
-    subprocess.run(["kmc_tools", 
+    subprocess.run([f"{src_dir}/bin/kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}{prefix}_{k}mers", "reduce", f"{kmer_dir}red_{prefix}_{k}mers", f"-ci{data['min_fg_count']}"])
+    subprocess.run([f"{src_dir}/bin/kmc_tools", 
                     "-t1", 
                     "-hp", 
                     "simple", 
@@ -65,9 +65,9 @@ def filter_primers_into_dict(task):
                     "-ocright"])
 
     # while not os.path.exists(f"{kmer_dir}{bg_prefix}_{k}mers.txt"):
-    subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}{bg_prefix}_{k}mer_counts", "dump", f"{kmer_dir}{bg_prefix}_{k}mers.txt"])
+    subprocess.run([f"{src_dir}/bin/kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}{bg_prefix}_{k}mer_counts", "dump", f"{kmer_dir}{bg_prefix}_{k}mers.txt"])
     # while not os.path.exists(f"{kmer_dir}{prefix}_{k}mers.txt"):
-    subprocess.run(["kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}red_{prefix}_{k}mers", "dump", f"{kmer_dir}{prefix}_{k}mers.txt"])
+    subprocess.run([f"{src_dir}/bin/kmc_tools", "-t1", "-hp", "transform", f"{kmer_dir}red_{prefix}_{k}mers", "dump", f"{kmer_dir}{prefix}_{k}mers.txt"])
     subprocess.run(["rm", 
                     f"{kmer_dir}{bg_prefix}_{k}mer_counts.kmc_pre", 
                     f"{kmer_dir}{bg_prefix}_{k}mer_counts.kmc_suf", 
