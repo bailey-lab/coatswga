@@ -140,7 +140,7 @@ def setter(task):
     rev_len = 0
 
     # edits the threshold that each primer must cover a certain percent of new indices
-    coverage_change = 0.9
+    coverage_change = 0.75
 
     primes = [primer]
 
@@ -166,7 +166,7 @@ def setter(task):
     fwd_coverage = fwd_len / total_fg_length
     total_fgs = df['fg_count'][index]
     total_bgs = df['bg_count'][index]
-    while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
+    while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.01:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
@@ -198,7 +198,7 @@ def setter(task):
                     new_inters[prefix] = intervals
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (tot_len - fwd_len) >= coverage_change * prim_coverage_len:
+                if (tot_len - fwd_len)/total_fg_length >= coverage_change * (1 - fwd_coverage):
                     primes.append(primer)
                     fwd_len = tot_len
                     fwd_inters = new_inters.copy()
@@ -223,11 +223,12 @@ def setter(task):
         index += 1
         if index == len(df):
             index = 0
-            coverage_change = round(coverage_change - 0.1, 2)
+            coverage_change = round(coverage_change/2, 3)
+            # coverage_change = round(coverage_change - 0.1, 2)
             # print(f"{pid} coverage factor to {coverage_change}")
     
     rev_coverage = rev_len/total_fg_length
-    coverage_change = 0.9
+    coverage_change = 0.75
     index = 0
     prim_inters = {prefix: {} for prefix in prefixes}
     while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.1:
@@ -258,7 +259,7 @@ def setter(task):
                     new_inters[prefix] = intervals 
 
                 # checks if the primer covered a high enough percent of bases that were not previously covered by the set
-                if (tot_len - rev_len) >= coverage_change * prim_coverage_len:
+                if (tot_len - rev_len)/total_fg_length >= coverage_change * (1 - rev_coverage):
                     primes.append(rev)
                     rev_len = tot_len
                     rev_inters = new_inters.copy()
@@ -283,7 +284,8 @@ def setter(task):
         index += 1
         if index == len(df):
             index = 0
-            coverage_change = round(coverage_change - 0.1, 2)
+            coverage_change = round(coverage_change/2, 3)
+            # coverage_change = round(coverage_change - 0.1, 2)
             # print(f"{pid} coverage factor to {coverage_change}")
     if os.path.exists(f"{data['data_dir']}/pos{pid}.bed"):
         os.remove(f"{data['data_dir']}/pos{pid}.bed")
