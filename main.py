@@ -16,7 +16,7 @@ def main():
         with open(in_json, 'r') as f:
             data = json.load(f)
         
-        if not data['data_dir'][-1] == "/":
+        if  data['data_dir'][-1] != "/":
             data['data_dir'] = data['data_dir'] + "/"
 
         print("=" * 80)
@@ -39,7 +39,7 @@ def main():
             print("Invalid step. Input is 'find', 'sets', or 'all'.")
 
 if __name__ == "__main__":
-    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/new_params.json'
+    # in_json = '/Users/kaleb/Desktop/Bailey_Lab/code/newswga/params/test_params.json'
     # with open(in_json, 'r') as f:
     #     data = json.load(f)
     
