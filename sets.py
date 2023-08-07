@@ -82,7 +82,8 @@ def setter(task):
     total_bgs = 0
 
     # edits the threshold that each primer must cover a certain percent of new indices
-    coverage_change = 0.75
+    cov_ch = [0.5, 0.25, 0.15, 0.1, 0.05, 0]
+    coverage_change = cov_ch[0]
 
     primes = [primer]
 
@@ -108,7 +109,7 @@ def setter(task):
     fwd_coverage = fwd_len / total_fg_length
     total_fgs = df['fg_count'][index]
     total_bgs = df['bg_count'][index]
-    while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.01:
+    while fwd_coverage < data["target_coverage"] and index < len(df):
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
         count = df['fg_count'][index]
@@ -141,7 +142,7 @@ def setter(task):
                     primes.append(primer)
                     fwd_len = tot_len
                     fwd_inters = new_inters.copy()
-
+                    coverage_change = cov_ch[0]
                     # calculate the reverse strand coverage provided by any reverse complements of the primer
                     rev_len = 0
                     rev = rc(primer)
@@ -162,12 +163,12 @@ def setter(task):
         index += 1
         if index == len(df):
             index = 0
-            coverage_change = round(coverage_change/2, 3)
-            # coverage_change = round(coverage_change - 0.1, 2)
-            # print(f"{pid} coverage factor to {coverage_change}")
+            coverage_change = cov_ch[cov_ch.index(coverage_change) + 1]
+            if coverage_change == 0:
+                break
     
     rev_coverage = rev_len/total_fg_length
-    coverage_change = 0.75
+    coverage_change = cov_ch[0]
     index = 0
     prim_inters = {prefix: {} for prefix in prefixes}
     while rev_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.01:
@@ -198,6 +199,7 @@ def setter(task):
                     primes.append(rev)
                     rev_len = tot_len
                     rev_inters = new_inters.copy()
+                    coverage_change = cov_ch[0]
                     if fwd_coverage < data["target_coverage"]:
                         fwd_len = 0
                         for prefix in prefixes:
@@ -219,7 +221,9 @@ def setter(task):
         index += 1
         if index == len(df):
             index = 0
-            coverage_change = round(coverage_change/2, 3)
+            coverage_change = cov_ch[cov_ch.index(coverage_change) + 1]
+            if coverage_change == 0:
+                break
     
     index = 0
     while len(primes) < data['min_set_size']:
