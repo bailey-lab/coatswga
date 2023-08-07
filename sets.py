@@ -6,6 +6,7 @@ import os
 from multiply_align.algorithms import PrimerDimerLike
 from filter import rc
 from time import perf_counter as pc
+import numpy as np
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:
     '''
@@ -31,7 +32,27 @@ def is_dimer(primers:list, primer_to_check:str) -> bool:
         model.align()
         if model.score < -2.79: # threshold defined by Johnston et al. that guarantees no dimers forming
             return True
-    return False
+    return False 
+
+def cov_computer(task) -> dict:
+    df, prim_pos, chr_lens, data = task
+    prefixes = data['fg_prefixes']
+    prim_ints = {prefix: {} for prefix in prefixes}
+    lens = []
+    for primer in df['primer']:
+        cov = 0
+        for prefix in prefixes:
+            prim_dict = {}
+            for chr in prim_pos[prefix]:
+                prim_dict[chr] = []
+                if primer in prim_pos[prefix][chr]:
+                    prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + data['fragment_length'])) for pos in prim_pos[prefix][chr][primer]]
+            length, inters = bedtooler(prim_dict, {}, data['data_dir'])
+            prim_ints[prefix][primer] = inters
+            cov += length
+        lens.append(cov)
+    df['cov_len'] = lens
+    return prim_ints, df
 
 def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
     '''
@@ -315,21 +336,34 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
     # indices of rows get scrambled when sorting by ratio, have to reset indices to iterate through in order
     df = df.reset_index(drop=True)
 
+    parts = np.array_split(df, data['cpus'])
+    pool = multiprocessing.Pool(processes=data['cpus'])
+    tasks = [(arr, primers_with_positions, chr_lens, data) for arr in parts]
+    covers = pool.map(cov_computer, tasks)
+    df_w_lens = pd.concat([tup[1] for tup in covers])
+    df_w_lens = df_w_lens.sort_values(by='cov_len', ascending=False)
+    df_w_lens.reset_index(drop=True)
+    primer_inters = {prefix: {} for prefix in data['fg_prefixes']}
+    for tup in covers:
+        for prefix in data['fg_prefixes']:
+            primer_inters[prefix].update(tup[0][prefix])
+    if data['verbose']:
+        print(f"Time getting coverage lengths: {pc() - t0}")
+
     tasks = []
     added = set()
     for i in range(data['cpus']):
         initial = []
         indices = []
-        for index in range(len(df)):
-            primer = df['primer'][index]
+        for index in range(len(df_w_lens)):
+            primer = df_w_lens['primer'][index]
             if primer not in added and not is_dimer(initial, primer):
                 added.add(primer)
                 initial.append(primer)
                 indices.append(index)
                 if len(initial) >= data["min_set_size"]:
                     break
-        tasks.append((initial, indices, df, primers_with_positions, chr_lens, data))
-    pool = multiprocessing.Pool(processes=data['cpus'])
+        tasks.append((initial, indices, df_w_lens, primers_with_positions, chr_lens, data))
     out = pool.map(setter, tasks)
     fewest = 0
     count = len(out[0][0])
