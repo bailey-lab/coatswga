@@ -243,7 +243,7 @@ def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
             empty_counter += 1
     # if empty return early
     if empty_counter == len(both):
-        return 0, {}
+        return (0, {})
     # open the intermediate file pos[pid].bed
     pid = os.getpid()
     with open(f"{data_dir}pos{pid}.bed", 'w') as f:
@@ -273,7 +273,7 @@ def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
         inters[chr].append((start,end))
         # add difference to length covered
         length += end - start
-    return length, inters
+    return (length, inters)
 
 def cov_computer(task) -> dict:
     df, prim_pos, chr_lens, data = task

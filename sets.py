@@ -203,15 +203,14 @@ def setter(task):
                     if fwd_coverage < data["target_coverage"]:
                         fwd_len = 0
                         for prefix in prefixes:
-                            if primer not in prim_inters[prefix]:
-                                prim_dict = {}
-                                for chr in primers_with_positions[prefix]:
-                                    if primer in primers_with_positions[prefix][chr]:
-                                        prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + frag_length)) for pos in primers_with_positions[prefix][chr][primer]]
-                                prim_inters[prefix][primer] = bedtooler(prim_dict, {}, data['data_dir'])
-                            length, intervals = bedtooler(prim_inters[prefix][primer][1], new_inters[prefix], data['data_dir'])
+                            prim_dict = {}
+                            for chr in primers_with_positions[prefix]:
+                                if primer in primers_with_positions[prefix][chr]:
+                                    prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + frag_length)) for pos in primers_with_positions[prefix][chr][primer]]
+                            length, intervals = bedtooler(prim_dict, new_inters[prefix], data['data_dir'])
                             fwd_len += length
                             fwd_inters[prefix] = intervals
+                    fwd_coverage = fwd_len/total_fg_length
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/total_fg_length
