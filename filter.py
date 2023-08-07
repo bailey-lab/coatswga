@@ -198,9 +198,9 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
     # calculate the bg/fg ratio for each primer
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
     # sort the df first by ratio (low to high) then by fg count (high to low) so the most common and most specific primers will be at the top
-    sorted_df = df.sort_values(by=["ratio", "fg_count"], ascending=[True, False])
-    df['sort_val'] = df.apply(lambda x: x['fg_count']/pow((x['ratio'] + 0.000000001), 2), axis=1)
-    # sorted_df = df.sort_values(by='sort_val', ascending=False)
+    # sorted_df = df.sort_values(by=["ratio", "fg_count"], ascending=[True, False])
+    df['sort_val'] = df.apply(lambda x: x['fg_count']/(x['ratio'] + 0.000000001), axis=1)
+    sorted_df = df.sort_values(by='sort_val', ascending=False)
 
     return sorted_df, primers_with_positions, chr_lens
 
