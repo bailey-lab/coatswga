@@ -2,7 +2,9 @@ import json
 import subprocess
 import pandas as pd
 import multiprocessing
+import os
 import melting
+import numpy as np
 from time import perf_counter as pc
 
 def rc(seq: str) -> str:
@@ -199,21 +201,108 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
     df['ratio'] = df.apply(lambda x: x['bg_count']/x['fg_count'], axis=1)
     # sort the df first by ratio (low to high) then by fg count (high to low) so the most common and most specific primers will be at the top
     # sorted_df = df.sort_values(by=["ratio", "fg_count"], ascending=[True, False])
-    df['sort_val'] = df.apply(lambda x: x['fg_count']/(x['ratio'] + 0.000000001), axis=1)
-    sorted_df = df.sort_values(by='sort_val', ascending=False)
+    # df['sort_val'] = df.apply(lambda x: x['fg_count']/(x['ratio'] + 0.000000001), axis=1)
+    # sorted_df = df.sort_values(by='sort_val', ascending=False)
 
-    return sorted_df, primers_with_positions, chr_lens
+    return df, primers_with_positions, chr_lens
+
+def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
+    '''
+    Helper method to take in two lists of intervals of covered indices and use bedtools to combine them
+
+    Args:
+        pos_inters: Dictionary mapping each chromosome to a list of interval tuples of the primer to check
+        all_inters: Dictionary mapping each chromosome to a list of interval tuples of the indices covered by the current primer set, or an empty 
+                    dictionary so the intervals of just the current primer can be calculated
+        data_dir: Path to store the intermediate pos.bed file 
+
+    Returns:
+        length: The number of indices covered by the combined ranges
+        inters: List of tuples representing the combined ranges
+    '''
+
+    # initialize dictionary to hold all the intervals
+    both = {}
+    # iterates through each chromosome in the passed dictionary
+    if len(pos_inters) >= len(all_inters):
+        big = pos_inters
+        small = all_inters
+    else:
+        big = all_inters
+        small = pos_inters
+    empty_counter = 0
+    for chr in big:
+        # if the chromosome is already in the covered indices
+        if chr in small:
+            both[chr] = big[chr] + small[chr]
+        else:
+            both[chr] = big[chr]
+        # sort the list of tuples by the first value so bedtools can use it
+        both[chr].sort(key=lambda x: x[0])
+        if len(both[chr]) == 0:
+            empty_counter += 1
+    # if empty return early
+    if empty_counter == len(both):
+        return 0, {}
+    # open the intermediate file pos[pid].bed
+    pid = os.getpid()
+    with open(f"{data_dir}pos{pid}.bed", 'w') as f:
+        # iterate through each chromosome in the combined dictionary, writing each range to the file
+        for chr in both:
+            for tup in both[chr]:
+                f.write(chr + "\t" + str(tup[0]) + "\t" + str(tup[1]) + "\n")
+
+    # variables to store output
+    length = 0
+    inters = {}
+
+    # outer = subprocess.run(['bedtools', 'merge', '-i', data_dir + "/pos.bed"], capture_output=True)
+    # get output from bedtools, decode, strip, and split by line
+    out = subprocess.check_output(['bedtools', 'merge', '-i', f"{data_dir}pos{pid}.bed"]).decode().strip().split('\n')
+    # iterates through each line
+    for line in out:
+        # bedtools output is tab deliminated, so split on each tab
+        parts = line.split('\t')
+        chr = parts[0]
+        # if chromosome not contained in final dictionary, intialize new list to be added to
+        if chr not in inters:
+            inters[chr] = []
+        # start and end points of range
+        start = int(parts[1])
+        end = int(parts[2])
+        inters[chr].append((start,end))
+        # add difference to length covered
+        length += end - start
+    return length, inters
+
+def cov_computer(task) -> dict:
+    df, prim_pos, chr_lens, data = task
+    prefixes = data['fg_prefixes']
+    lens = []
+    for primer in df['primer']:
+        cov = 0
+        for prefix in prefixes:
+            prim_dict = {}
+            for chr in prim_pos[prefix]:
+                prim_dict[chr] = []
+                if primer in prim_pos[prefix][chr]:
+                    prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + data['fragment_length'])) for pos in prim_pos[prefix][chr][primer]]
+            length = bedtooler(prim_dict, {}, data['data_dir'])[0]
+            cov += length
+        lens.append(cov)
+    df['cov_len'] = lens
+    return df
 
 def main(data):
     t0 = pc()
 
     print("Filtering primers...")
+    pool = multiprocessing.Pool(processes=int(data['cpus']))
     if data['cpus'] > 1:
         tasks = []
         for prefix in data["fg_prefixes"]:
             for k in range(int(data["min_primer_length"]), int(data["max_primer_length"]) + 1):
                 tasks.append((prefix, k, data))
-        pool = multiprocessing.Pool(processes=int(data['cpus']))
         primer_dicts_list = pool.map(filter_primers_into_dict, tasks)
     else:
         primer_dicts_list = []
@@ -238,7 +327,6 @@ def main(data):
 
     print("Calculating position indices...")
     ta = pc()
-    pool = multiprocessing.Pool(processes=int(data['cpus']))
     tasks = []
     for i, fg_genome in enumerate(data['fg_genomes']):
         prefix = data['fg_prefixes'][i]
@@ -252,8 +340,20 @@ def main(data):
 
     df, primers_with_positions, chr_lens = make_df(immut_list, primer_dict, data['fg_prefixes'])
 
+    print("Calculating coverage intervals...")
+    tt = pc()
+    parts = np.array_split(df, data['cpus'])
+    tasks = [(arr, primers_with_positions, chr_lens, data) for arr in parts]
+    covers = pool.map(cov_computer, tasks)
+    df_w_lens: pd.DataFrame = pd.concat([dat for dat in covers])
+    df_w_lens['sort_val'] = df_w_lens.apply(lambda x: x['cov_len']/(pow(x['ratio'] + 0.000000001, 2) * x['bg_count']), axis=1)
+    df_w_lens = df_w_lens.sort_values(by='sort_val', ascending=False)
+    df_w_lens = df_w_lens.reset_index(drop=True)
+    if data['verbose']:
+        print(f"Time getting coverage lengths: {pc() - tt}")
+
     if data["write"]:
-        df.to_csv(data['data_dir'] + "/primers_df.csv")
+        df_w_lens.to_csv(data['data_dir'] + "/primers_df.csv")
         # for i, prefix in enumerate(data['fg_prefixes']):
         #     name = prefix.split('/')[-1]
         #     if len(primers_with_positions[prefix]) > 0:
@@ -264,7 +364,7 @@ def main(data):
         #                     to_write = str(primer) + ":" + str(primers_with_positions[prefix][chr][primer]) + "\n"
         #                     f.write(to_write)
 
-    return df, primers_with_positions, chr_lens
+    return df_w_lens, primers_with_positions, chr_lens
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]

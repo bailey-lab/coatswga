@@ -4,9 +4,8 @@ import pandas as pd
 import multiprocessing
 import os
 from multiply_align.algorithms import PrimerDimerLike
-from filter import rc
+from filter import rc, bedtooler
 from time import perf_counter as pc
-import numpy as np
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:
     '''
@@ -34,95 +33,6 @@ def is_dimer(primers:list, primer_to_check:str) -> bool:
             return True
     return False 
 
-def cov_computer(task) -> dict:
-    df, prim_pos, chr_lens, data = task
-    prefixes = data['fg_prefixes']
-    prim_ints = {prefix: {} for prefix in prefixes}
-    lens = []
-    for primer in df['primer']:
-        cov = 0
-        for prefix in prefixes:
-            prim_dict = {}
-            for chr in prim_pos[prefix]:
-                prim_dict[chr] = []
-                if primer in prim_pos[prefix][chr]:
-                    prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + data['fragment_length'])) for pos in prim_pos[prefix][chr][primer]]
-            length, inters = bedtooler(prim_dict, {}, data['data_dir'])
-            prim_ints[prefix][primer] = inters
-            cov += length
-        lens.append(cov)
-    df['cov_len'] = lens
-    return prim_ints, df
-
-def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
-    '''
-    Helper method to take in two lists of intervals of covered indices and use bedtools to combine them
-
-    Args:
-        pos_inters: Dictionary mapping each chromosome to a list of interval tuples of the primer to check
-        all_inters: Dictionary mapping each chromosome to a list of interval tuples of the indices covered by the current primer set, or an empty 
-                    dictionary so the intervals of just the current primer can be calculated
-        data_dir: Path to store the intermediate pos.bed file 
-
-    Returns:
-        length: The number of indices covered by the combined ranges
-        inters: List of tuples representing the combined ranges
-    '''
-
-    # initialize dictionary to hold all the intervals
-    both = {}
-    # iterates through each chromosome in the passed dictionary
-    if len(pos_inters) >= len(all_inters):
-        big = pos_inters
-        small = all_inters
-    else:
-        big = all_inters
-        small = pos_inters
-    empty_counter = 0
-    for chr in big:
-        # if the chromosome is already in the covered indices
-        if chr in small:
-            both[chr] = big[chr] + small[chr]
-        else:
-            both[chr] = big[chr]
-        # sort the list of tuples by the first value so bedtools can use it
-        both[chr].sort(key=lambda x: x[0])
-        if len(both[chr]) == 0:
-            empty_counter += 1
-    # if empty return early
-    if empty_counter == len(both):
-        return 0, {}
-    # open the intermediate file pos[pid].bed
-    pid = os.getpid()
-    with open(f"{data_dir}pos{pid}.bed", 'w') as f:
-        # iterate through each chromosome in the combined dictionary, writing each range to the file
-        for chr in both:
-            for tup in both[chr]:
-                f.write(chr + "\t" + str(tup[0]) + "\t" + str(tup[1]) + "\n")
-
-    # variables to store output
-    length = 0
-    inters = {}
-
-    # outer = subprocess.run(['bedtools', 'merge', '-i', data_dir + "/pos.bed"], capture_output=True)
-    # get output from bedtools, decode, strip, and split by line
-    out = subprocess.check_output(['bedtools', 'merge', '-i', f"{data_dir}pos{pid}.bed"]).decode().strip().split('\n')
-    # iterates through each line
-    for line in out:
-        # bedtools output is tab deliminated, so split on each tab
-        parts = line.split('\t')
-        chr = parts[0]
-        # if chromosome not contained in final dictionary, intialize new list to be added to
-        if chr not in inters:
-            inters[chr] = []
-        # start and end points of range
-        start = int(parts[1])
-        end = int(parts[2])
-        inters[chr].append((start,end))
-        # add difference to length covered
-        length += end - start
-    return length, inters
-
 def setter(task):
     """
     Finds a set of primers with the highest specificity that theoretically meets the target_coverage value specified in the JSON file. 
@@ -143,7 +53,7 @@ def setter(task):
             data: A JSON object containing hyperparameters
     """
 
-    primes, indices, df, primers_with_positions, chr_lens, data = task
+    primer, index, df, primers_with_positions, chr_lens, data = task
 
     pid = os.getpid()
 
@@ -174,34 +84,30 @@ def setter(task):
     # edits the threshold that each primer must cover a certain percent of new indices
     coverage_change = 0.75
 
-    for prefix in prefixes:
-        prim_dict = {}
-        for chr in primers_with_positions[prefix]:
-            prim_dict[chr] = []
-            for primer in primes:
-                if primer in primers_with_positions[prefix][chr]:
-                    prim_dict[chr] = prim_dict[chr] + [(int(pos), min(chr_lens[prefix][chr], int(pos) + frag_length)) for pos in primers_with_positions[prefix][chr][primer]]
-        prim_inters[prefix][primer] = bedtooler(prim_dict, {}, data['data_dir'])
-        fwd_len += prim_inters[prefix][primer][0]
-        fwd_inters[prefix] = prim_inters[prefix][primer][1]
+    primes = [primer]
 
     for prefix in prefixes:
         prim_dict = {}
         for chr in primers_with_positions[prefix]:
-            prim_dict[chr] = []
-            for primer in primes:
-                rev = rc(primer)
-                if rev in primers_with_positions[prefix][chr]:
-                    prim_dict[chr] = [(max(0, int(pos) + len(rev) - frag_length), int(pos) + len(rev)) for pos in primers_with_positions[prefix][chr][rev]]
-        
+            if primer in primers_with_positions[prefix][chr]:
+                prim_dict[chr] = [(int(pos), min(chr_lens[prefix][chr], int(pos) + frag_length)) for pos in primers_with_positions[prefix][chr][primer]]
+        prim_inters[prefix][primer] = bedtooler(prim_dict, {}, data['data_dir'])
+        fwd_len += prim_inters[prefix][primer][0]
+        fwd_inters[prefix] = prim_inters[prefix][primer][1]
+
+    rev = rc(primer)
+    for prefix in prefixes:
+        prim_dict = {}
+        for chr in primers_with_positions[prefix]:
+            if rev in primers_with_positions[prefix][chr]:
+                prim_dict[chr] = [(max(0, int(pos) + len(rev) - frag_length), int(pos) + len(rev)) for pos in primers_with_positions[prefix][chr][rev]]
         length, inters = bedtooler(prim_dict, {}, data['data_dir'])
         rev_len += length
         rev_inters[prefix] = inters
 
     fwd_coverage = fwd_len / total_fg_length
-    for index in indices:
-        total_fgs += df['fg_count'][index]
-        total_bgs += df['bg_count'][index]
+    total_fgs = df['fg_count'][index]
+    total_bgs = df['bg_count'][index]
     while fwd_coverage < data["target_coverage"] and index < len(df) and coverage_change >= 0.01:
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
@@ -314,10 +220,15 @@ def setter(task):
         if index == len(df):
             index = 0
             coverage_change = round(coverage_change/2, 3)
-            # coverage_change = round(coverage_change - 0.1, 2)
-            # print(f"{pid} coverage factor to {coverage_change}")
-    if os.path.exists(f"{data['data_dir']}/pos{pid}.bed"):
-        os.remove(f"{data['data_dir']}/pos{pid}.bed")
+    
+    index = 0
+    while len(primes) < data['min_set_size']:
+        primer = df['primer'][index]
+        if not is_dimer(primes, primer):
+            primes.append(primer)
+            total_fgs += df['fg_count'][index]
+            total_bgs += df['bg_count'][index]
+        index += 1
     
     if data['verbose']:
         print(f"\nFinal set for {pid}: ")
@@ -333,37 +244,15 @@ def setter(task):
 def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
     print("Finding sets...")
     t0 = pc()
-    # indices of rows get scrambled when sorting by ratio, have to reset indices to iterate through in order
-    df = df.reset_index(drop=True)
-
-    parts = np.array_split(df, data['cpus'])
     pool = multiprocessing.Pool(processes=data['cpus'])
-    tasks = [(arr, primers_with_positions, chr_lens, data) for arr in parts]
-    covers = pool.map(cov_computer, tasks)
-    df_w_lens = pd.concat([tup[1] for tup in covers])
-    df_w_lens = df_w_lens.sort_values(by='cov_len', ascending=False)
-    df_w_lens.reset_index(drop=True)
-    primer_inters = {prefix: {} for prefix in data['fg_prefixes']}
-    for tup in covers:
-        for prefix in data['fg_prefixes']:
-            primer_inters[prefix].update(tup[0][prefix])
-    if data['verbose']:
-        print(f"Time getting coverage lengths: {pc() - t0}")
-
-    tasks = []
-    added = set()
-    for i in range(data['cpus']):
-        initial = []
-        indices = []
-        for index in range(len(df_w_lens)):
-            primer = df_w_lens['primer'][index]
-            if primer not in added and not is_dimer(initial, primer):
-                added.add(primer)
-                initial.append(primer)
-                indices.append(index)
-                if len(initial) >= data["min_set_size"]:
-                    break
-        tasks.append((initial, indices, df_w_lens, primers_with_positions, chr_lens, data))
+    tasks = [(df['primer'][0], 0, df, primers_with_positions, chr_lens, data)]
+    added = [df['primer'][0]]
+    for i in range(1, data['cpus']):
+        for index in range(1, len(df)):
+            if df['primer'][index] not in added and is_dimer(added, df['primer'][index]):
+                tasks.append((df['primer'][index], index, df, primers_with_positions, chr_lens, data))
+                added.append(df['primer'][index])
+                break
     out = pool.map(setter, tasks)
     fewest = 0
     count = len(out[0][0])
@@ -470,6 +359,7 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
         print("Total foreground hits: " + str(out[best_coverage][3]))
         print("Total background hits: " + str(out[best_coverage][4]))
         print("Bg/fg ratio: " + str(round(out[best_coverage][5], 3)) + "\n")
+    os.system(f"rm {data['data_dir']}pos*.bed")
     print("Time finding sets:", pc() - t0)
 
 if __name__ == "__main__":
