@@ -263,19 +263,11 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
             if av > max_cov:
                 max_cov = av
 
-    fewest = 0
-    count = len(all_out[0][0])
     best_coverage = 0
     coverage = (all_out[0][1] + all_out[0][2])/2
     lowest_ratio = 0
     ratio = all_out[0][5]
     for i in range(1, len(all_out)):
-        if len(all_out[i][0]) < count:
-            fewest = i
-            count = len(all_out[i][0])
-        elif len(all_out[i][0]) == count and all_out[i][5] < all_out[fewest][5]:
-            fewest = i
-        
         if (all_out[i][1] + all_out[i][2])/2 > coverage:
             best_coverage = i
             coverage = (all_out[i][1] + all_out[i][2])/2
@@ -288,71 +280,15 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
         elif all_out[i][5] == ratio and (all_out[i][1] + all_out[i][2])/2 > (all_out[lowest_ratio][1] + all_out[lowest_ratio][2])/2:
             lowest_ratio = i
     
-    if fewest == best_coverage and best_coverage == lowest_ratio:
+    if best_coverage == lowest_ratio:
         print("\nSet with highest coverage, fewest primers, and lowest ratio: ")
-        print(str(all_out[fewest][0]))
-        print("Expected forward coverage: " + str(round(all_out[fewest][1], 3)))
-        print("Expected reverse coverage: " + str(round(all_out[fewest][2], 3)))
-        print("Total foreground hits: " + str(all_out[fewest][3]))
-        print("Total background hits: " + str(all_out[fewest][4]))
-        print("Bg/fg ratio: " + str(round(all_out[fewest][5], 3)))
-    elif fewest == best_coverage:
-        print("\nSet with highest coverage and fewest primers: ")
-        print(str(all_out[fewest][0]))
-        print("Expected forward coverage: " + str(round(all_out[fewest][1], 3)))
-        print("Expected reverse coverage: " + str(round(all_out[fewest][2], 3)))
-        print("Total foreground hits: " + str(all_out[fewest][3]))
-        print("Total background hits: " + str(all_out[fewest][4]))
-        print("Bg/fg ratio: " + str(round(all_out[fewest][5], 3)))
-
-        print("\nSet with lowest ratio: ")
-        print(str(all_out[lowest_ratio][0]))
-        print("Expected forward coverage: " + str(round(all_out[lowest_ratio][1], 3)))
-        print("Expected reverse coverage: " + str(round(all_out[lowest_ratio][2], 3)))
-        print("Total foreground hits: " + str(all_out[lowest_ratio][3]))
-        print("Total background hits: " + str(all_out[lowest_ratio][4]))
-        print("Bg/fg ratio: " + str(round(all_out[lowest_ratio][5], 3)) + "\n")
-    elif fewest == lowest_ratio:
-        print("\nSet with lowest ratio and fewest primers: ")
-        print(str(all_out[fewest][0]))
-        print("Expected forward coverage: " + str(round(all_out[fewest][1], 3)))
-        print("Expected reverse coverage: " + str(round(all_out[fewest][2], 3)))
-        print("Total foreground hits: " + str(all_out[fewest][3]))
-        print("Total background hits: " + str(all_out[fewest][4]))
-        print("Bg/fg ratio: " + str(round(all_out[fewest][5], 3)))
-
-        print("\nSet with highest coverage: ")
         print(str(all_out[best_coverage][0]))
         print("Expected forward coverage: " + str(round(all_out[best_coverage][1], 3)))
         print("Expected reverse coverage: " + str(round(all_out[best_coverage][2], 3)))
         print("Total foreground hits: " + str(all_out[best_coverage][3]))
         print("Total background hits: " + str(all_out[best_coverage][4]))
-        print("Bg/fg ratio: " + str(round(all_out[best_coverage][5], 3)) + "\n")
-    elif best_coverage == lowest_ratio:
-        print("\nSet with lowest ratio and highest coverage: ")
-        print(str(all_out[lowest_ratio][0]))
-        print("Expected forward coverage: " + str(round(all_out[lowest_ratio][1], 3)))
-        print("Expected reverse coverage: " + str(round(all_out[lowest_ratio][2], 3)))
-        print("Total foreground hits: " + str(all_out[lowest_ratio][3]))
-        print("Total background hits: " + str(all_out[lowest_ratio][4]))
-        print("Bg/fg ratio: " + str(round(all_out[lowest_ratio][5], 3)))
-
-        print("\nSet with fewest primers: ")
-        print(str(all_out[fewest][0]))
-        print("Expected forward coverage: " + str(round(all_out[fewest][1], 3)))
-        print("Expected reverse coverage: " + str(round(all_out[fewest][2], 3)))
-        print("Total foreground hits: " + str(all_out[fewest][3]))
-        print("Total background hits: " + str(all_out[fewest][4]))
-        print("Bg/fg ratio: " + str(round(all_out[fewest][5], 3)) + "\n")
+        print("Bg/fg ratio: " + str(round(all_out[best_coverage][5], 3)))
     else:
-        print("\nSet with fewest primers: ")
-        print(str(all_out[fewest][0]))
-        print("Expected forward coverage: " + str(round(all_out[fewest][1], 3)))
-        print("Expected reverse coverage: " + str(round(all_out[fewest][2], 3)))
-        print("Total foreground hits: " + str(all_out[fewest][3]))
-        print("Total background hits: " + str(all_out[fewest][4]))
-        print("Bg/fg ratio: " + str(round(all_out[fewest][5], 3)))
-
         print("\nSet with lowest ratio: ")
         print(str(all_out[lowest_ratio][0]))
         print("Expected forward coverage: " + str(round(all_out[lowest_ratio][1], 3)))
