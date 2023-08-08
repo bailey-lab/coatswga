@@ -225,7 +225,7 @@ def setter(task):
                 break
     
     index = 0
-    while len(primes) < data['min_set_size']:
+    while len(primes) < data['min_set_size'] and index < len(df):
         primer = df['primer'][index]
         if not is_dimer(primes, primer):
             primes.append(primer)
