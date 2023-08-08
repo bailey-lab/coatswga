@@ -53,7 +53,7 @@ def setter(task):
             data: A JSON object containing hyperparameters
     """
 
-    primer, index, df, primers_with_positions, chr_lens, data = task
+    primer, i, df, primers_with_positions, chr_lens, data = task
 
     pid = os.getpid()
 
@@ -107,8 +107,9 @@ def setter(task):
         rev_inters[prefix] = inters
 
     fwd_coverage = fwd_len / total_fg_length
-    total_fgs = df['fg_count'][index]
-    total_bgs = df['bg_count'][index]
+    total_fgs = df['fg_count'][i]
+    total_bgs = df['bg_count'][i]
+    index = 0
     while fwd_coverage < data["target_coverage"] and index < len(df):
         # Primer to check and the counts of foreground hits
         primer = df['primer'][index]
@@ -157,9 +158,6 @@ def setter(task):
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     fwd_coverage = fwd_len/total_fg_length
-                    # if data['verbose']:
-                    #     print(f"{pid} added {primer} to set")
-                    #     print(f"{pid} forward coverage: " + str(round(fwd_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
@@ -214,9 +212,6 @@ def setter(task):
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/total_fg_length
-                    # if data['verbose']:
-                    #     print(f"{pid} added {primer} to set")
-                    #     print(f"{pid} reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
@@ -249,14 +244,6 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
     t0 = pc()
     pool = multiprocessing.Pool(processes=data['cpus'])
 
-    # tasks = [(df['primer'][0], 0, df, primers_with_positions, chr_lens, data)]
-    # added = [df['primer'][0]]
-    # for i in range(1, data['cpus']):
-    #     for index in range(1, len(df)):
-    #         if df['primer'][index] not in added and is_dimer(added, df['primer'][index]):
-    #             tasks.append((df['primer'][index], index, df, primers_with_positions, chr_lens, data))
-    #             added.append(df['primer'][index])
-    #             break
     if data['force_coverage_threshold']:
         thresh = data['target_coverage']
     else:
@@ -264,7 +251,7 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
     max_cov = 0
     index = 0
     all_out = []
-    while max_cov < thresh and index < len(df):
+    while max_cov < thresh and (index + data['cpus']) < len(df):
         tasks = []
         for i in range(index, index + data['cpus']):
             tasks.append((df['primer'][i], i, df, primers_with_positions, chr_lens, data))
