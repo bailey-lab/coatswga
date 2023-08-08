@@ -346,7 +346,7 @@ def main(data):
     tasks = [(arr, primers_with_positions, chr_lens, data) for arr in parts]
     covers = pool.map(cov_computer, tasks)
     df_w_lens: pd.DataFrame = pd.concat([dat for dat in covers])
-    df_w_lens['sort_val'] = df_w_lens.apply(lambda x: pow(x['cov_len'], 1)/(x['ratio'] + 0.000000001), axis=1)
+    df_w_lens['sort_val'] = df_w_lens.apply(lambda x: x['cov_len']/pow(x['ratio'] + 0.000000001, 2), axis=1)
     df_w_lens = df_w_lens.sort_values(by='sort_val', ascending=False)
     df_w_lens = df_w_lens.reset_index(drop=True)
     if data['verbose']:
