@@ -6,6 +6,7 @@ import os
 import melting
 import numpy as np
 from time import perf_counter as pc
+from multiply_align.algorithms import PrimerDimerLike
 
 def rc(seq: str) -> str:
     '''
@@ -206,6 +207,23 @@ def make_df(immut_list:list, primer_dict:dict, prefixes:list):
 
     return df, primers_with_positions, chr_lens
 
+def dimer_counter(task):
+    df, primers_to_check = task
+    model = PrimerDimerLike()
+    model.load_parameters()
+    dim_counts = []
+    for primer in primers_to_check:
+        count = 0
+        for i, checker in enumerate(df['primer']):
+            if primer == checker:
+                index = i
+            model.set_primers(primer, checker)
+            model.align()
+            if model.score >= -2.79:
+                count += 1
+        dim_counts.append((index, primer, count))
+    return dim_counts
+
 def bedtooler(pos_inters:dict, all_inters:dict, data_dir:str):
     '''
     Helper method to take in two lists of intervals of covered indices and use bedtools to combine them
@@ -340,13 +358,27 @@ def main(data):
 
     df, primers_with_positions, chr_lens = make_df(immut_list, primer_dict, data['fg_prefixes'])
 
+    print("Sorting dimer counts...")
+    td = pc()
+    parts = np.array_split(df['primer'].copy(), data['cpus'])
+    tasks = [(df, part) for part in parts]
+    counts = pool.map(dimer_counter, tasks)
+    tot = []
+    for counter in counts:
+        tot += counter
+    tot.sort(key=lambda x: x[0])
+    just_counts = [count[2] for count in tot]
+    df["dimer_count"] = just_counts
+    if data['verbose']:
+        print(f"Time to get dimer counts: {round(pc() - td, 4)}")
+
     print("Calculating coverage intervals...")
     tt = pc()
     parts = np.array_split(df, data['cpus'])
     tasks = [(arr, primers_with_positions, chr_lens, data) for arr in parts]
     covers = pool.map(cov_computer, tasks)
     df_w_lens: pd.DataFrame = pd.concat([dat for dat in covers])
-    df_w_lens['sort_val'] = df_w_lens.apply(lambda x: pow(x['cov_len'], 1)/(x['ratio'] + 0.000000001), axis=1)
+    df_w_lens['sort_val'] = df_w_lens.apply(lambda x: (x['cov_len'] * pow(x['dimer_count'], 2))/(x['ratio'] + 0.000000001), axis=1)
     df_w_lens = df_w_lens.sort_values(by='sort_val', ascending=False)
     df_w_lens = df_w_lens.reset_index(drop=True)
     if data['verbose']:

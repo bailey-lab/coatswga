@@ -1,11 +1,11 @@
 import json
-import subprocess
+import os
 import pandas as pd
 import multiprocessing
-import os
+import numpy as np
+from time import perf_counter as pc
 from multiply_align.algorithms import PrimerDimerLike
 from filter import rc, bedtooler
-from time import perf_counter as pc
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:
     '''
@@ -157,9 +157,9 @@ def setter(task):
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     fwd_coverage = fwd_len/total_fg_length
-                    if data['verbose']:
-                        print(f"{pid} added {primer} to set")
-                        print(f"{pid} forward coverage: " + str(round(fwd_coverage, 3)))
+                    # if data['verbose']:
+                    #     print(f"{pid} added {primer} to set")
+                    #     print(f"{pid} forward coverage: " + str(round(fwd_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
@@ -214,9 +214,9 @@ def setter(task):
                     total_fgs += count
                     total_bgs += df['bg_count'][index]
                     rev_coverage = rev_len/total_fg_length
-                    if data['verbose']:
-                        print(f"{pid} added {primer} to set")
-                        print(f"{pid} reverse coverage: " + str(round(rev_coverage, 3)))
+                    # if data['verbose']:
+                    #     print(f"{pid} added {primer} to set")
+                    #     print(f"{pid} reverse coverage: " + str(round(rev_coverage, 3)))
         index += 1
         if index == len(df):
             index = 0
@@ -248,15 +248,21 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
     print("Finding sets...")
     t0 = pc()
     pool = multiprocessing.Pool(processes=data['cpus'])
-    tasks = [(df['primer'][0], 0, df, primers_with_positions, chr_lens, data)]
-    added = [df['primer'][0]]
-    for i in range(1, data['cpus']):
-        for index in range(1, len(df)):
-            if df['primer'][index] not in added and is_dimer(added, df['primer'][index]):
-                tasks.append((df['primer'][index], index, df, primers_with_positions, chr_lens, data))
-                added.append(df['primer'][index])
-                break
+
+    tasks = []
+    for i in range(min(data['cpus'], len(df))):
+        tasks.append((df['primer'][i], i, df, primers_with_positions, chr_lens, data))
+
+    # tasks = [(df['primer'][0], 0, df, primers_with_positions, chr_lens, data)]
+    # added = [df['primer'][0]]
+    # for i in range(1, data['cpus']):
+    #     for index in range(1, len(df)):
+    #         if df['primer'][index] not in added and is_dimer(added, df['primer'][index]):
+    #             tasks.append((df['primer'][index], index, df, primers_with_positions, chr_lens, data))
+    #             added.append(df['primer'][index])
+    #             break
     out = pool.map(setter, tasks)
+
     fewest = 0
     count = len(out[0][0])
     best_coverage = 0
@@ -289,7 +295,7 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
         print("Expected reverse coverage: " + str(round(out[fewest][2], 3)))
         print("Total foreground hits: " + str(out[fewest][3]))
         print("Total background hits: " + str(out[fewest][4]))
-        print("Bg/fg ratio: " + str(round(out[fewest][5], 3)))
+        print("Bg/fg ratio: " + str(round(out[fewest][5], 3)) + "\n")
     elif fewest == best_coverage:
         print("\nSet with highest coverage and fewest primers: ")
         print(str(out[fewest][0]))
