@@ -256,7 +256,7 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
         for i in range(index, index + data['cpus']):
             tasks.append((df['primer'][i], i, df, primers_with_positions, chr_lens, data))
         out = pool.map(setter, tasks)
-        all_out.append(out)
+        all_out.extend(out)
         index += data['cpus']
         for outer in out:
             av = (outer[1] + outer[2])/2
