@@ -2,9 +2,9 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from .nn_model import create_nn_score_dt
-from pathlib import Path
+import os
 
-DIR = Path(__file__).absolute().parent
+DIR = os.path.dirname(__file__)
 
 
 # ================================================================================
@@ -98,7 +98,7 @@ class PrimerDimerLike(AlignmentAlgorithm):
     
     """
     
-    param_path = f"{DIR}/parameters.json"
+    param_path = os.path.join(DIR, "parameters.json")
     
     def load_parameters(self):
         """
@@ -107,12 +107,16 @@ class PrimerDimerLike(AlignmentAlgorithm):
         
         """
         # Load parameter JSON
-        params = json.load(open(self.param_path, "r"))
+        params = {    
+                    "end_length": 4,
+                    "end_bonus": -0.5,
+                    "double_mismatch_score": 0.2
+                }
 
         # Load nearest neighbour model
         self.nn_scores = create_nn_score_dt(
-            match_json=f"{DIR}/match.json",  # this is a path
-            single_mismatch_json=f"{DIR}/single_mismatch.json",  # this is a path
+            match_json=os.path.join(DIR, "match.json"),  # this is a path
+            single_mismatch_json=os.path.join(DIR, "single_mismatch.json"),  # this is a path
             double_mismatch_score=params['double_mismatch_score']  # this is a float
         )
 

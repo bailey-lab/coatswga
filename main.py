@@ -1,14 +1,14 @@
 import json
 import sys
-import find as find
-import filter as filter
-import sets as sets
+from . import find
+from . import filter
+from . import sets
 from datetime import datetime
 import argparse
 
 defaults = {
     "write": False,
-    "verbose": True,
+    "verbose": False,
     "cpus": 1,
     "min_primer_length": 6,
     "max_primer_length": 12,
@@ -36,10 +36,10 @@ def main():
     par = argparse.ArgumentParser(prog='swga3',description="Finds selective primers that preferentially bind to the target genome.", formatter_class=fmt)
     par.add_argument('-j', '--json_file', metavar='<path>', help='Path to the file containing parameters in JSON format')
     par.add_argument('-d', '--data_dir', metavar='<path>', help='Path to the directory to store kmer and .csv files')
-    par.add_argument('-v', '--verbose', action='store_true')
-    par.add_argument('-w', '--write', action='store_true')
-    par.add_argument('-bg', '--bg_genomes', action='extend', nargs='*')
-    par.add_argument('-fg', '--fg_genomes', action='extend', nargs='*')
+    par.add_argument('-v', '--verbose', action='store_true', help='Whether or not extra output is wanted (intermediate sets, timing of parts), default: False')
+    par.add_argument('-w', '--write', action='store_true', help='Whether or not .csv\'s of the primers with counts should be written')
+    par.add_argument('-bg', '--bg_genomes', action='extend', nargs='*', metavar='<path1> <path2>', help='file paths of the background genomes')
+    par.add_argument('-fg', '--fg_genomes', action='extend', nargs='*', metavar='<path1> <path2>', help='file paths of the foreground genomes')
     par.add_argument('-bp', '--bg_prefix')
     par.add_argument('-fp', '--fg_prefixes', action='extend', nargs='*')
     par.add_argument('-c', '--cpus', type=int)
@@ -59,6 +59,10 @@ def main():
     if args['json_file']:
         with open(args['json_file'], 'r') as f:
             data = json.load(f)
+        if data['write'] and not args['write']:
+            args['write'] = True
+        if data['verbose'] and not args['verbose']:
+            args['verbose'] = True
     else:
         data = {}
     del args['json_file']
