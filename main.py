@@ -1,8 +1,8 @@
 import json
 import sys
-from . import find
-from . import filter
-from . import sets
+import find
+import filter
+import sets
 from datetime import datetime
 import argparse
 
@@ -19,7 +19,8 @@ defaults = {
     "fragment_length": 10000,
     "target_coverage": 0.95,
     "force_coverage_threshold": False,
-    "min_set_size": 10
+    "min_set_size": 10,
+    "existing_primers": []
 }
 
 class CustomHelpFormatter(argparse.HelpFormatter):
@@ -53,6 +54,7 @@ def main():
     par.add_argument('-o', '--target_coverage', type=int)
     par.add_argument('-f', '--force_coverage_threshold', action='store_true')
     par.add_argument('-s', '--min_set_size', type=int)
+    par.add_argument('-p', '--existing_primers', action='extend', nargs='*', metavar='<primer1> <primer2>', help='set of primers to check against, defualt: None')
     args = par.parse_args()
     args = vars(args)
 

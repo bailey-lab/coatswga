@@ -2,8 +2,8 @@ import json
 import pandas as pd
 import multiprocessing
 import os
-from .multiply_align.algorithms import PrimerDimerLike
-from .filter import rc, bedtooler
+from multiply_align.algorithms import PrimerDimerLike
+from filter import rc, bedtooler
 from time import perf_counter as pc
 
 def is_dimer(primers:list, primer_to_check:str) -> bool:
@@ -84,7 +84,7 @@ def setter(task):
     cov_ch = [0.5, 0.25, 0.15, 0.1, 0.05, 0]
     coverage_change = cov_ch[0]
 
-    primes = [primer]
+    primes = data["existing_primers"] + [primer]
 
     for prefix in prefixes:
         prim_dict = {}
@@ -253,7 +253,8 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
     while max_cov < thresh and (index + data['cpus']) < len(df):
         tasks = []
         for i in range(index, index + data['cpus']):
-            tasks.append((df['primer'][i], i, df, primers_with_positions, chr_lens, data))
+            if not is_dimer(data["existing_primers"], df['primer'][i]):
+                tasks.append((df['primer'][i], i, df, primers_with_positions, chr_lens, data))
         out = pool.map(setter, tasks)
         all_out.extend(out)
         index += data['cpus']
