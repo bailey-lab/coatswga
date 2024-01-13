@@ -6,7 +6,7 @@ sWGA3.0 is a command-line tool for identifying optimal RNA primer sets for use i
 
 The pipeline executes in three main steps: 1) finding all potential k-mers using KMC3, 2) filtering out unwanted primers based on parameters both in the program and specified by the users, and 3) forming sets of primers that theoretically tile the genome without forming primer-primer dimers or self-dimers.
 
-
+Step 3 uses a novel approach to solve the tiling problem. The algorithm treats each base in the target genome as a sequential list of indices. It records the position of each possible primer and blocks out chunks of indices as "covered" based on the predicted fragment length of the enzyme being used (specified by the user). It leverages `bedtools` for extremely efficient interval computations, cutting down runtime and memory usage drastically. 
 
 ## Installation
 First, clone the repository:
