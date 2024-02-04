@@ -43,7 +43,7 @@ swga3 [options]
 ```
 The full list of hyperparameters and options is:
 
-| JSON entry | Short option | Default value | Description |
+| JSON entry/long option | Short option | Default value | Description |
 | ---------- | ------------ | ------------- | ----------- |
 | ---- | -j | None | Path to the file containing parameters in JSON format |
 | data_dir | -d | None | Path to the directory to store kmer and CSV files | 
