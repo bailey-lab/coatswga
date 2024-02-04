@@ -28,7 +28,6 @@ Test the installation with:
 ```
 swga3 -h
 ```
-You will also need to install `bedtools`, available [here](https://bedtools.readthedocs.io/en/latest/)
 
 ## Usage
 It is recommended to copy the `params.json` file and fill it out with the desired hyperparameters. Command line options can be used but they are not saved and are far less efficient.
@@ -78,3 +77,10 @@ The JSON file can be used in tandem with command line options as long as `-j` is
 > `force_coverage_threshold` is only recommended as a last-resort option as it can make the program run for days. If multiple runs have been made while tuning the other hyperparameters without satisfying results, this option can be made `True` to force the program to continue to evaluate primer sets until one is found that covers the target threshold. When `False`, the program only evaluates the number of top primers equal to the number of CPUs, for the sake of efficiency.
 >
 > `existing_primers` is meant to be used as a hole-filling option. If there is already a primer set in use that does poorly on a couple smaller areas, those sequences can be passed in with the primer set specified at this option and the program with ensure any new primers given will not form dimers with any primers in the set
+
+## Resources
+swga3 uses the following modules:
+* `kmc3`. K-mer counting and filtering. https://github.com/refresh-bio/KMC
+* `bedtools`. Interval arithmetic. https://bedtools.readthedocs.io/en/latest/
+
+Primer-dimer calculations were based on an algorithm implemented by Jason Hendry in `multiply` https://github.com/JasonAHendry/multiply/tree/master
