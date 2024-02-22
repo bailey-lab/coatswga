@@ -262,7 +262,9 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
             av = (outer[1] + outer[2])/2
             if av > max_cov:
                 max_cov = av
-
+    if len(all_out) < 1:
+        print("Not enough possible primers to create a set. Try loosening the parameters and running again.")
+        quit()
     best_coverage = 0
     coverage = (all_out[0][1] + all_out[0][2])/2
     lowest_ratio = 0
@@ -305,7 +307,8 @@ def main(df:list, primers_with_positions:dict, chr_lens:dict, data):
         print("Total background hits: " + str(all_out[best_coverage][4]))
         print("Bg/fg ratio: " + str(round(all_out[best_coverage][5], 3)) + "\n")
     os.system(f"rm {data['data_dir']}pos*.bed")
-    print("Time finding sets:", pc() - t0)
+    if data["verbose"]:
+        print("Time finding sets:", pc() - t0)
 
 if __name__ == "__main__":
     # in_json = sys.argv[1]

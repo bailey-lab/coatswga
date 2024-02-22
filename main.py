@@ -10,17 +10,17 @@ defaults = {
     "write": False,
     "verbose": False,
     "cpus": 1,
-    "min_primer_length": 6,
-    "max_primer_length": 12,
+    "min_primer_length": 8,
+    "max_primer_length": 16,
     "min_tm": 15,
     "max_tm": 45,
     "min_fg_count": 200,
     "max_ratio": 1,
-    "fragment_length": 10000,
+    "fragment_length": 2000,
     "target_coverage": 0.95,
     "force_coverage_threshold": False,
     "min_set_size": 10,
-    "existing_primers": []
+    "existing_primers": [],
 }
 
 class CustomHelpFormatter(argparse.HelpFormatter):
@@ -36,24 +36,24 @@ def main():
     fmt = lambda prog: CustomHelpFormatter(prog)
     par = argparse.ArgumentParser(prog='swga3',description="Finds selective primers that preferentially bind to the target genome.", formatter_class=fmt)
     par.add_argument('-j', '--json_file', metavar='<path>', help='Path to the file containing parameters in JSON format')
-    par.add_argument('-d', '--data_dir', metavar='<path>', help='Path to the directory to store kmer and .csv files')
+    par.add_argument('-d', '--data_dir', metavar='<path>', help='Path to the directory to store kmer and CSV files')
     par.add_argument('-v', '--verbose', action='store_true', help='Whether or not extra output is wanted (intermediate sets, timing of parts), default: False')
-    par.add_argument('-w', '--write', action='store_true', help='Whether or not .csv\'s of the primers with counts should be written')
-    par.add_argument('-bg', '--bg_genomes', action='extend', nargs='*', metavar='<path1> <path2>', help='file paths of the background genomes')
+    par.add_argument('-w', '--write', action='store_true', help='Whether or not CSV\'s of the primers with counts should be written')
+    par.add_argument('-bg', '--bg_genomes', action='extend', nargs='*', metavar='<path1> <path2>', help='file paths of the background (off-target) genomes')
     par.add_argument('-fg', '--fg_genomes', action='extend', nargs='*', metavar='<path1> <path2>', help='file paths of the foreground genomes')
-    par.add_argument('-bp', '--bg_prefix')
-    par.add_argument('-fp', '--fg_prefixes', action='extend', nargs='*')
-    par.add_argument('-c', '--cpus', type=int)
-    par.add_argument('-m', '--min_primer_length', type=int)
-    par.add_argument('-M', '--max_primer_length', type=int)
-    par.add_argument('-t', '--min_tm', type=int)
-    par.add_argument('-T', '--max_tm', type=int)
-    par.add_argument('-C', '--min_fg_count', type=int)
-    par.add_argument('-r', '--max_ratio', type=int)
-    par.add_argument('-l', '--fragment_length', type=int)
-    par.add_argument('-o', '--target_coverage', type=int)
-    par.add_argument('-f', '--force_coverage_threshold', action='store_true')
-    par.add_argument('-s', '--min_set_size', type=int)
+    par.add_argument('-bp', '--bg_prefix', help='Prefix for the background files')
+    par.add_argument('-fp', '--fg_prefixes', action='extend', nargs='*', help='List of prefixes for the foreground files')
+    par.add_argument('-c', '--cpus', type=int, help="Number of CPUs to use")
+    par.add_argument('-m', '--min_primer_length', type=int, help="Minimum primer length")
+    par.add_argument('-M', '--max_primer_length', type=int, help="Maximum primer length")
+    par.add_argument('-t', '--min_tm', type=int, help="Minimum predicted primer melting temperature")
+    par.add_argument('-T', '--max_tm', type=int, help="Maximum predicted primer melting temperature")
+    par.add_argument('-g', '--min_fg_count', type=int, help="Minimum number of foreground genome occurrences, helps to filter out less effective primers")
+    par.add_argument('-r', '--max_ratio', type=int, help="Maximum value of the background occurrences divided by foreground occurrences")
+    par.add_argument('-l', '--fragment_length', type=int, help="Theoretical length of DNA fragments formed by DNA polymerase enzymes")
+    par.add_argument('-o', '--target_coverage', type=int, help="Proportion of the genome to cover")
+    par.add_argument('-f', '--force_coverage_threshold', action='store_true', help="Force the program to run until either every potential primer has been checked or the target coverage threshold has been reached")
+    par.add_argument('-s', '--min_set_size', type=int, help="Minimum number of primers to include in the set")
     par.add_argument('-p', '--existing_primers', action='extend', nargs='*', metavar='<primer1> <primer2>', help='set of primers to check against, defualt: None')
     args = par.parse_args()
     args = vars(args)
