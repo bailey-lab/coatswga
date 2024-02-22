@@ -1,8 +1,8 @@
 import json
 import sys
-import find
-import filter
-import sets
+from . import find
+from . import filter
+from . import sets
 from datetime import datetime
 import argparse
 

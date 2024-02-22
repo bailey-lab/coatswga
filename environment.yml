@@ -1,0 +1,13 @@
+name: swga3
+channels:
+  - defaults
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11.*
+  - melt
+  - bedtools=2.31.*
+  - numpy=1.26.*
+  - pandas=2.0.*
+  - kmc
+  - pip
