@@ -65,6 +65,8 @@ def main():
             args['write'] = True
         if data['verbose'] and not args['verbose']:
             args['verbose'] = True
+        if data['force_coverage_threshold'] and not args['force_coverage_threshold']:
+            args['force_coverage_threshold'] = True
     else:
         data = {}
     del args['json_file']
