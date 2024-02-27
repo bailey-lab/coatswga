@@ -40,6 +40,9 @@ Without the JSON file, run with:
 ```
 swga3 [options]
 ```
+> [!NOTE]
+> The first run with the same foreground/background and k-mer range will always take the longest as KMC3 has to be run. Subsequent runs will finish quickly, allowing edits of the other parameters to fine-tune the primer set.
+
 The full list of hyperparameters and options is:
 
 | JSON entry/long option | Short option | Default value | Description |
@@ -80,7 +83,7 @@ The JSON file can be used in tandem with command line options as long as `-j` is
 
 ## Resources
 swga3 uses the following modules:
-* `kmc3`. K-mer counting and filtering. https://github.com/refresh-bio/KMC
+* `KMC3`. K-mer counting and filtering. https://github.com/refresh-bio/KMC
 * `bedtools`. Interval arithmetic. https://bedtools.readthedocs.io/en/latest/
 
 Primer-dimer calculations were based on an algorithm implemented by Jason Hendry in `multiply` https://github.com/JasonAHendry/multiply/tree/master
