@@ -1,4 +1,4 @@
-name: swga3
+name: coatswga
 channels:
   - defaults
   - conda-forge
