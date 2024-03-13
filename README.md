@@ -15,10 +15,10 @@ git clone https://github.com/bailey-lab/swga3.git
 ```
 Create a virtual environment with the required dependencies with conda:
 ```
-cd swga3
+cd coatswga
 conda update conda
 conda env create -f environment.yml
-conda activate swga3
+conda activate coatswga
 ```
 Install `coatswga` with pip:
 ```
