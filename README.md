@@ -11,7 +11,7 @@ Step 3 uses a highly efficient brute-force approach to solve the tiling problem.
 ## Installation
 First, clone the repository:
 ```
-git clone https://github.com/bailey-lab/swga3.git
+git clone https://github.com/bailey-lab/COATswga.git
 ```
 Create a virtual environment with the required dependencies with conda:
 ```
