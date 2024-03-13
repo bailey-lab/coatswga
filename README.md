@@ -2,7 +2,7 @@
 
 ## Overview
 
-sWGA3.0 is a command-line tool for identifying coverage-optimizing RNA primer sets for use in selective whole-genome amplification (sWGA).
+COATswga is a command-line tool for identifying coverage-optimizing RNA primer sets for use in selective whole-genome amplification (sWGA).
 
 The pipeline executes in three main steps: 1) finding all potential k-mers using KMC3, 2) filtering out unwanted primers based on parameters both in the program and specified by the users, and 3) forming sets of primers that theoretically tile the genome without forming primer-primer dimers or self-dimers.
 
@@ -11,22 +11,22 @@ Step 3 uses a highly efficient brute-force approach to solve the tiling problem.
 ## Installation
 First, clone the repository:
 ```
-git clone https://github.com/kzuckerman/swga3.0.git
+git clone https://github.com/bailey-lab/swga3.git
 ```
 Create a virtual environment with the required dependencies with conda:
 ```
-cd swga3.0
+cd swga3
 conda update conda
 conda env create -f environment.yml
 conda activate swga3
 ```
-Install `swga3.0` with pip:
+Install `coatswga` with pip:
 ```
 pip install -e .
 ```
 Test the installation with:
 ```
-swga3 -h
+coatswga -h
 ```
 
 ## Usage
@@ -34,11 +34,11 @@ It is recommended to copy the `params.json` file and fill it out with the desire
 
 If using the JSON format, running is simply
 ```
-swga3 -j /path/to/params.json
+coatswga -j /path/to/params.json
 ```
 Without the JSON file, run with:
 ```
-swga3 [options]
+coatswga [options]
 ```
 > [!NOTE]
 > The first run with the same foreground/background and k-mer range will always take the longest as KMC3 has to be run. Subsequent runs will finish quickly, allowing edits of the other parameters to fine-tune the primer set.
@@ -82,7 +82,7 @@ The JSON file can be used in tandem with command line options as long as `-j` is
 > `existing_primers` is meant to be used as a hole-filling option. If there is already a primer set in use that does poorly on a couple smaller areas, those sequences can be passed in with the primer set specified at this option and the program with ensure any new primers given will not form dimers with any primers in the set
 
 ## Resources
-swga3 uses the following modules:
+COATswga uses the following modules:
 * `KMC3`. K-mer counting and filtering. https://github.com/refresh-bio/KMC
 * `bedtools`. Interval arithmetic. https://bedtools.readthedocs.io/en/latest/
 
