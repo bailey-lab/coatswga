@@ -1,4 +1,4 @@
-# swga3.0
+# swga3.0: COATswga (Coverage Optimizing and Accurate Toolkit for selective whole genome amplification
 
 ## Overview
 
