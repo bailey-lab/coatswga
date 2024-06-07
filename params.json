@@ -1,0 +1,27 @@
+{
+    "data_dir": "/path/to/dir",
+    "write": false,
+    "verbose": false,
+    "bg_genomes": [
+        "/path/to/genome"
+    ],
+    "fg_genomes": [
+        "/path/to/genome"
+    ],
+    "bg_prefix": "back",
+    "fg_prefixes": [
+        "fore"
+    ],
+    "cpus": 1,
+    "min_primer_length": 6,
+    "max_primer_length": 22,
+    "min_tm": 15,
+    "max_tm": 45,
+    "min_fg_count": 200,
+    "max_ratio": 50,
+    "fragment_length": 2000,
+    "target_coverage": 0.99,
+    "force_coverage_threshold": false,
+    "min_set_size": 10,
+    "existing_primers": []
+}
