@@ -1,4 +1,4 @@
-# COATswga (Coverage Optimizing and Accurate Toolkit for selective whole genome amplification)
+# COATswga: Coverage Optimizing and Accurate Toolkit for selective whole genome amplification (sWGA)
 
 ## Overview
 
