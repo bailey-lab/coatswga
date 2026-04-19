@@ -11,3 +11,4 @@ dependencies:
   - pandas=2.0.*
   - kmc
   - pip
+  - "setuptools<81"
