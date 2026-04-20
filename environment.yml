@@ -1,6 +1,5 @@
 name: coatswga
 channels:
-  - defaults
   - conda-forge
   - bioconda
 dependencies:
